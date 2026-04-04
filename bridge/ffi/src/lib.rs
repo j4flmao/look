@@ -30,7 +30,7 @@ struct FfiSearchPayload {
     results: Vec<FfiSearchItem>,
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn look_search_count(query_len: u32) -> FfiSearchResult {
     let query = "x".repeat(query_len as usize);
     let results = with_engine(|engine| engine.search(&query, 20));
@@ -39,7 +39,7 @@ pub extern "C" fn look_search_count(query_len: u32) -> FfiSearchResult {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn look_search_json(query: *const c_char, limit: u32) -> *mut c_char {
     let query = cstr_to_string(query);
     let max = if limit == 0 { 20 } else { limit as usize };
@@ -75,7 +75,7 @@ pub extern "C" fn look_search_json(query: *const c_char, limit: u32) -> *mut c_c
         .into_raw()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn look_record_usage(candidate_id: *const c_char, action: *const c_char) -> bool {
     let candidate_id = cstr_to_string(candidate_id);
     let action = cstr_to_string(action);
@@ -99,7 +99,17 @@ pub extern "C" fn look_record_usage(candidate_id: *const c_char, action: *const 
     ok
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
+pub extern "C" fn look_reload_config() -> bool {
+    let path = default_db_path();
+    if QueryEngine::bootstrap_sqlite(&path).is_err() {
+        return false;
+    }
+    refresh_engine_cache();
+    true
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn look_free_cstring(ptr: *mut c_char) {
     if ptr.is_null() {
         return;
