@@ -270,12 +270,11 @@ fn parse_translate_response(value: &serde_json::Value) -> String {
 
     let mut result = String::new();
     for group in translations {
-        if let Some(parts) = group.as_array() {
-            if let Some(translated) = parts.first() {
-                if let Some(s) = translated.as_str() {
-                    result.push_str(s);
-                }
-            }
+        if let Some(parts) = group.as_array()
+            && let Some(translated) = parts.first()
+            && let Some(s) = translated.as_str()
+        {
+            result.push_str(s);
         }
     }
     result
