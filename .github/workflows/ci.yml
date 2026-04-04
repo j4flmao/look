@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting (core workspace)
+        run: cargo fmt --all --manifest-path core/Cargo.toml -- --check
+
+      - name: Check formatting (ffi crate)
+        run: cargo fmt --all --manifest-path bridge/ffi/Cargo.toml -- --check
+
+      - name: Run clippy (core workspace)
+        run: cargo clippy --workspace --manifest-path core/Cargo.toml -- -D warnings
+
+      - name: Run clippy (ffi crate)
+        run: cargo clippy --manifest-path bridge/ffi/Cargo.toml -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests (core workspace)
+        run: cargo test --workspace --manifest-path core/Cargo.toml
+
+      - name: Run tests (ffi crate)
+        run: cargo test --manifest-path bridge/ffi/Cargo.toml
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build (core workspace)
+        run: cargo build --release --workspace --manifest-path core/Cargo.toml
+
+      - name: Build (ffi crate)
+        run: cargo build --release --manifest-path bridge/ffi/Cargo.toml
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: look-rust-artifacts
+          path: |
+            core/target/release
+            bridge/ffi/target/release
+          retention-days: 7

@@ -52,6 +52,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = CE158B282F80D9B0001BAA87 /* Build configuration list for PBXNativeTarget "look-app" */;
 			buildPhases = (
+				A1B2C3D42F80D9AE001BAA87 /* Build Rust FFI */,
 				CE158B192F80D9AE001BAA87 /* Sources */,
 				CE158B1A2F80D9AE001BAA87 /* Frameworks */,
 				CE158B1B2F80D9AE001BAA87 /* Resources */,
@@ -113,6 +114,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A1B2C3D42F80D9AE001BAA87 /* Build Rust FFI */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust FFI";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(PROJECT_DIR)/RustBuild/liblook_ffi.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nif [ \"$CONFIGURATION\" = \"Release\" ]; then\n  PROFILE=release\n  CARGO_FLAGS=--release\nelse\n  PROFILE=debug\n  CARGO_FLAGS=\"\"\nfi\n\ncargo build --manifest-path \"$PROJECT_DIR/../../../bridge/ffi/Cargo.toml\" $CARGO_FLAGS\nmkdir -p \"$PROJECT_DIR/RustBuild\"\ncp \"$PROJECT_DIR/../../../bridge/ffi/target/$PROFILE/liblook_ffi.a\" \"$PROJECT_DIR/RustBuild/liblook_ffi.a\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		CE158B192F80D9AE001BAA87 /* Sources */ = {
@@ -251,11 +274,15 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-force_load,$(PROJECT_DIR)/RustBuild/liblook_ffi.a",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -281,11 +308,15 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-force_load,$(PROJECT_DIR)/RustBuild/liblook_ffi.a",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

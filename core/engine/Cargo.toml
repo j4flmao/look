@@ -1,0 +1,12 @@
+[package]
+name = "look-engine"
+edition = "2021"
+license = "MIT"
+version = "0.1.0"
+
+[dependencies]
+look-indexing = { path = "../indexing" }
+look-matching = { path = "../matching" }
+look-ranking = { path = "../ranking" }
+look-storage = { path = "../storage" }
+plist = "1"

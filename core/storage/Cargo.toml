@@ -1,0 +1,9 @@
+[package]
+name = "look-storage"
+edition = "2021"
+license = "MIT"
+version = "0.1.0"
+
+[dependencies]
+look-indexing = { path = "../indexing" }
+rusqlite = { version = "0.31", features = ["bundled"] }

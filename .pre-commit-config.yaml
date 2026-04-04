@@ -1,0 +1,54 @@
+# Pre-commit hooks configuration
+# Hooks auto-installed via nix develop / flake
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ["--maxkb=5000"]
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: debug-statements
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/doublify/pre-commit-rust
+    rev: v1.0
+    hooks:
+      - id: fmt
+        args: [--manifest-path=core/Cargo.toml, --all]
+      - id: cargo-check
+        args: [--workspace, --manifest-path=core/Cargo.toml]
+      - id: clippy
+        args: [--workspace, --manifest-path=core/Cargo.toml, --, -D, warnings]
+
+  - repo: local
+    hooks:
+      - id: cargo-test-core
+        name: cargo test (core workspace)
+        entry: cargo test --workspace --manifest-path core/Cargo.toml
+        language: system
+        pass_filenames: false
+        types: [rust]
+
+      - id: cargo-test-ffi
+        name: cargo test (ffi)
+        entry: cargo test --manifest-path bridge/ffi/Cargo.toml
+        language: system
+        pass_filenames: false
+        types: [rust]
+
+      - id: secrets
+        name: Detect secrets
+        entry: bash -c 'grep -rnE "(password|secret|token|api_key|apikey|private_key)" --include="*.rs" --include="*.toml" --include="*.yaml" --include="*.yml" --exclude-dir=target . | grep -v "^[^\:]+\:\s*//\|#" || true'
+        language: system
+        pass_filenames: false
+
+ci:
+  autoupdate_schedule: monthly
+  autoupdate_commit_msg: "chore: update pre-commit hooks"
