@@ -1,3 +1,5 @@
+#![allow(unsafe_code)]
+
 use look_engine::QueryEngine;
 use look_indexing::CandidateKind;
 use look_storage::SqliteStore;
@@ -188,7 +190,10 @@ fn refresh_engine_cache() {
 struct TranslateResponse(serde_json::Value);
 
 #[unsafe(no_mangle)]
-pub extern "C" fn look_translate_json(text: *const c_char, target_lang: *const c_char) -> *mut c_char {
+pub extern "C" fn look_translate_json(
+    text: *const c_char,
+    target_lang: *const c_char,
+) -> *mut c_char {
     let text = cstr_to_string(text);
     let target_lang = cstr_to_string(target_lang);
 
@@ -200,8 +205,7 @@ pub extern "C" fn look_translate_json(text: *const c_char, target_lang: *const c
     let encoded_text = urlencodingencode(&text);
     let url = format!(
         "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl={}&dt=t&q={}",
-        target_lang,
-        encoded_text
+        target_lang, encoded_text
     );
 
     let output = std::process::Command::new("curl")
@@ -244,7 +248,8 @@ pub extern "C" fn look_translate_json(text: *const c_char, target_lang: *const c
         "error": null
     });
 
-    let json = serde_json::to_string(&result).unwrap_or_else(|_| "{\"error\":\"json error\"}".to_string());
+    let json =
+        serde_json::to_string(&result).unwrap_or_else(|_| "{\"error\":\"json error\"}".to_string());
     let cstring = CString::new(json).expect("valid json");
     store_json_allocation(cstring)
 }
