@@ -2,6 +2,23 @@ import AppKit
 import SwiftUI
 
 struct LauncherView: View {
+    private enum BannerStyle {
+        case success
+        case error
+        case info
+
+        var background: Color {
+            switch self {
+            case .success:
+                return .green.opacity(0.42)
+            case .error:
+                return .red.opacity(0.45)
+            case .info:
+                return .blue.opacity(0.40)
+            }
+        }
+    }
+
     @EnvironmentObject private var appUIState: AppUIState
     @EnvironmentObject private var themeStore: ThemeStore
 
@@ -16,6 +33,8 @@ struct LauncherView: View {
     @State private var keyboardMonitor = KeyboardSelectionMonitor()
     @State private var searchTask: Task<Void, Never>?
     @State private var bannerMessage: String?
+    @State private var bannerStyle: BannerStyle = .info
+    @State private var bannerCopyText: String?
     @State private var bannerTask: Task<Void, Never>?
     @State private var selectedKillSuggestionIndex: Int?
     @State private var pendingKillApp: (NSRunningApplication, Int)?
@@ -253,12 +272,7 @@ struct LauncherView: View {
         } else {
             let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
             if let translationTarget = extractTranslationQuery(from: trimmed) {
-                let result = bridge.translate(text: translationTarget)
-                if let translated = result?.translated, !translated.isEmpty {
-                    showBanner("\(translationTarget) -> \(translated)")
-                } else {
-                    showBanner("Translation failed")
-                }
+                handleTranslation(text: translationTarget)
                 isQueryFocused = true
             } else {
                 openSelectedApp()
@@ -290,14 +304,14 @@ struct LauncherView: View {
             ?? commandCatalog.first(where: { $0.id == selectedCommandID })
 
         guard let resolvedCommand else {
-            commandFeedback = "Unknown command. Try /shell, /calc, or /kill"
+            setCommandError("Unknown command. Try /shell, /calc, /kill, or /sys")
             return
         }
 
         switch resolvedCommand.id {
         case "shell":
             guard !commandArgsPart.isEmpty else {
-                commandFeedback = "Usage: /shell <command>"
+                setCommandError("Usage: /shell <command>")
                 return
             }
             commandFeedback = "Running..."
@@ -307,7 +321,7 @@ struct LauncherView: View {
             }
         case "calc":
             guard !commandArgsPart.isEmpty else {
-                commandFeedback = "Usage: /calc <expression>"
+                setCommandError("Usage: /calc <expression>")
                 return
             }
             let result = CalcCommand.evaluate(commandArgsPart)
@@ -317,7 +331,7 @@ struct LauncherView: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(value, forType: .string)
             case .error(let message):
-                commandFeedback = message
+                setCommandError(message)
             }
         case "kill":
             let apps = KillCommand.getRunningApps()
@@ -342,9 +356,16 @@ struct LauncherView: View {
                     commandFeedback = message
                 }
             }
+        case "sys":
+            commandFeedback = ""
         default:
-            commandFeedback = "Unsupported command"
+            setCommandError("Unsupported command")
         }
+    }
+
+    private func setCommandError(_ message: String) {
+        commandFeedback = message
+        showBanner(message)
     }
 
     private func runKillCommand(num: Int) {
@@ -416,12 +437,7 @@ struct LauncherView: View {
         guard !trimmed.isEmpty else { return }
 
         if let translationTarget = extractTranslationQuery(from: trimmed) {
-            let result = bridge.translate(text: translationTarget)
-            if let translated = result?.translated, !translated.isEmpty {
-                showBanner("\(translationTarget) -> \(translated)")
-            } else {
-                showBanner("Translation failed")
-            }
+            handleTranslation(text: translationTarget)
             isQueryFocused = true
             return
         }
@@ -454,18 +470,62 @@ struct LauncherView: View {
         }
     }
 
-    private func showBanner(_ message: String) {
+    private func toggleWindowVisibility() {
+        guard let window = NSApplication.shared.windows.first else { return }
+
+        if window.isVisible && NSApplication.shared.isActive {
+            hideLauncherWindow()
+            return
+        }
+
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        focusActiveInput()
+    }
+
+    private func hideLauncherWindow() {
+        guard let window = NSApplication.shared.windows.first else { return }
+        window.orderOut(nil)
+        NSApplication.shared.hide(nil)
+    }
+
+    private func handleTranslation(text: String) {
+        let result = bridge.translate(text: text)
+        if let translated = result?.translated, !translated.isEmpty {
+            showBanner(
+                "\(text) -> \(translated)",
+                style: .success,
+                copyText: translated,
+                duration: 4.5
+            )
+            return
+        }
+
+        let message = result?.error?.message ?? "Translation failed"
+        showBanner(message, style: .error, duration: 3.2)
+    }
+
+    private func showBanner(
+        _ message: String,
+        style: BannerStyle = .info,
+        copyText: String? = nil,
+        duration: Double = 1.8
+    ) {
         bannerTask?.cancel()
+        bannerStyle = style
+        bannerCopyText = copyText
         withAnimation(.easeOut(duration: 0.15)) {
             bannerMessage = message
         }
 
         bannerTask = Task {
-            try? await Task.sleep(nanoseconds: 1_800_000_000)
+            let ns = UInt64(max(0.6, duration) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: ns)
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 withAnimation(.easeIn(duration: 0.15)) {
                     bannerMessage = nil
+                    bannerCopyText = nil
                 }
             }
         }
@@ -496,25 +556,30 @@ struct LauncherView: View {
                     )
 
                     if let bannerMessage {
-                        Text(bannerMessage)
-                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
-                            .foregroundStyle(themeStore.fontColor())
+                        HStack(spacing: 8) {
+                            Text(bannerMessage)
+                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
+                                .foregroundStyle(themeStore.fontColor())
+                            if let copyText = bannerCopyText {
+                                Button("Copy") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(copyText, forType: .string)
+                                    showBanner("Copied", style: .info, duration: 1.0)
+                                }
+                                .buttonStyle(.plain)
+                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(.white.opacity(0.18), in: Capsule())
+                            }
+                        }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(.green.opacity(0.42), in: Capsule())
+                            .background(bannerStyle.background, in: Capsule())
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
                     if isCommandMode {
-                        CommandFeedbackView(
-                            message: liveCommandPreview ?? (commandFeedback.isEmpty ? AppConstants.Launcher.commandEmptyMessage : commandFeedback),
-                            themeStore: themeStore
-                        )
-                    }
-
-                    if isCommandMode {
-                        Spacer(minLength: 8)
-
                         if activeCommandID == "kill" {
                             KillCommandView(
                                 suggestions: Array(killSuggestions),
@@ -536,6 +601,8 @@ struct LauncherView: View {
                                     selectedKillSuggestionIndex = killSuggestions.first?.1
                                 }
                             }
+                        } else if activeCommandID == "sys" {
+                            SystemInfoView(items: SystemInfoCommand.getSystemInfoItems(), themeStore: themeStore)
                         } else {
                             CommandListView(
                                 commands: filteredCommands,
@@ -545,20 +612,44 @@ struct LauncherView: View {
                                 onSelect: selectCommand
                             )
                         }
+
+                        if activeCommandID != "sys" {
+                            CommandFeedbackView(
+                                message: liveCommandPreview ?? (commandFeedback.isEmpty ? AppConstants.Launcher.commandEmptyMessage : commandFeedback),
+                                themeStore: themeStore
+                            )
+                        }
                     } else {
-                        ResultsListView(
-                            results: filteredResults,
-                            selectedID: selectedResultID,
-                            themeStore: themeStore,
-                            onSelect: { selectedResultID = $0 },
-                            onOpen: { _ in openSelectedApp() }
-                        )
+                        HStack(spacing: 0) {
+                            ResultsListView(
+                                results: filteredResults,
+                                selectedID: selectedResultID,
+                                themeStore: themeStore,
+                                onSelect: { selectedResultID = $0 },
+                                onOpen: { _ in openSelectedApp() }
+                            )
+
+                            if let selectedID = selectedResultID,
+                               let selectedResult = filteredResults.first(where: { $0.id == selectedID }) {
+                                Rectangle()
+                                    .fill(.white.opacity(0.08))
+                                    .frame(width: 1)
+                                    .padding(.vertical, 4)
+
+                                ResultPreviewView(result: selectedResult)
+                            }
+                        }
                     }
 
-                    HintBar(isCommandMode: isCommandMode, themeStore: themeStore)
+                    if isCommandMode {
+                        Spacer(minLength: 0)
+                    }
+
+                    HintBar(isCommandMode: isCommandMode, activeCommandID: activeCommandID, themeStore: themeStore)
                 }
             }
             .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .font(themeStore.uiFont())
             .foregroundStyle(themeStore.fontColor())
             .background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -583,12 +674,6 @@ struct LauncherView: View {
             keyboardMonitor.stop()
         }
         .onChange(of: query) { _, _ in
-            if !isCommandMode && query.hasPrefix("/") {
-                query = ""
-                enterCommandMode()
-                return
-            }
-
             if !isCommandMode {
                 refreshSearchResults()
             }
@@ -619,19 +704,27 @@ struct LauncherView: View {
                 isQueryFocused = true
             }
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
+        ) { _ in
+            if !appUIState.showsThemeSettings {
+                hideLauncherWindow()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .lookReloadConfigRequested)) { _ in
             reloadConfig()
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookRefocusInputRequested)) { _ in
             focusActiveInput()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .lookToggleWindowRequested)) { _ in
+            toggleWindowVisibility()
+        }
     }
 
     @ViewBuilder
     private var themedBackground: some View {
-        if let url = themeStore.backgroundImageURL,
-            let image = NSImage(contentsOf: url)
-        {
+        if let image = themeStore.backgroundImage {
             backgroundImageView(image: image)
                 .blur(radius: themeStore.settings.backgroundImageBlur)
                 .opacity(themeStore.settings.backgroundImageOpacity)
@@ -701,11 +794,30 @@ struct LauncherView: View {
         keyboardMonitor.start(
             onNext: { moveSelection(.down, shouldAutocompleteCommand: true) },
             onPrevious: { moveSelection(.up, shouldAutocompleteCommand: true) },
+            onEnterCommandMode: {
+                if !isCommandMode {
+                    enterCommandMode()
+                }
+            },
             onExitCommandMode: {
-                exitCommandMode()
+                hideLauncherWindow()
+            },
+            onBackToCommandList: { [self] in
+                pendingKillApp = nil
+                selectedKillSuggestionIndex = nil
+                commandInput = ""
+                commandFeedback = ""
+                activeCommandID = "calc"
+                selectedCommandID = "calc"
             },
             onWebSearch: {
                 performWebSearchFromQuery()
+            },
+            onSelectCommandByIndex: { [self] index in
+                guard index > 0 && index <= commandCatalog.count else { return }
+                let command = commandCatalog[index - 1]
+                activeCommandID = command.id
+                selectedCommandID = command.id
             },
             onConfirmKill: { [self] in
                 if let (_, num) = pendingKillApp {

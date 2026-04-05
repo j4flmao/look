@@ -6,9 +6,35 @@ It helps you do three things quickly in one window:
 
 - launch installed apps
 - search local files and folders by name
-- run quick commands (calculator and shell)
+- run quick commands (calculator, shell, kill, and system info)
 
 The interface is local-first, lightweight, and designed for low-friction daily use.
+
+## Installation
+
+### Homebrew tap (recommended once release is published)
+
+```bash
+brew tap kunkka19xx/tap
+brew install --cask look
+```
+
+### Curl installer
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/install-look.sh | bash
+```
+
+### Installer options
+
+- choose version: `--version <version>` or env `LOOK_VERSION=<version>`
+- choose repository: `--repo kunkka19xx/look` or env `LOOK_REPO=kunkka19xx/look`
+- use a direct zip URL: `--url <release-zip-url>` or env `LOOK_DOWNLOAD_URL=<release-zip-url>`
+
+Install target:
+
+- installs to `/Applications` when writable
+- otherwise installs to `~/Applications`
 
 ## What makes look different
 
@@ -35,9 +61,24 @@ This includes:
 - press `Enter` to open the selected result
 - click a row to open it
 
+Path-style query is supported directly in normal search:
+
+- type path fragments like `git/books-pc`, `git/books-pc/readme`, or deeper segments to bias matches toward path hits
+
 Quick prefix action in the same input:
 
 - type `t"word or phrase` and press `Enter`: translate text and show the result banner in app
+- type `a"term`: search apps only
+- type `f"term`: search files only
+- type `d"term`: search folders only
+- type `r"pattern`: search by regex (case-insensitive)
+
+Translation privacy control:
+
+- network translation is disabled by default
+- enable translation in `Advanced` settings and click `Save Config`
+- optional env override: `LOOK_TRANSLATE_ALLOW_NETWORK=true`
+- when disabled, `t"...` returns a local warning and does not send text to network
 
 ### 2) Web search handoff
 
@@ -51,21 +92,29 @@ Current default provider: Google.
 
 To enter command mode:
 
-- type `/`
+- press `Cmd+/`
 
 Command mode starts with `calc` selected by default.
 
 In command mode:
 
-- `Tab` / `Shift+Tab` switches command type
+- `Tab` switches to next command
+- `Cmd+1` / `Cmd+2` / `Cmd+3` selects command directly
 - `Enter` runs the current command input
-- `Escape` exits command mode
+- `Escape` hides launcher
+- `Cmd+Escape` returns to command list on `calc`
+
+Spotlight-style behavior:
+
+- launcher hides on `Escape`
+- launcher also hides automatically when app loses focus
 
 Available commands:
 
 - `calc`: evaluate math expressions
 - `shell`: run shell commands
 - `kill`: force kill a running app (see Kill command shortcuts above)
+- `sys`: show system info (model, macOS, memory, CPU usage, battery, uptime, disk)
 
 Examples:
 
@@ -91,8 +140,19 @@ To open settings:
 Settings are shown inside the same launcher window and include:
 
 - appearance: tint color, blur style, blur opacity, font family/size, text color, border style
-- background: image picker, layout mode, image blur, image opacity
+- advanced: background image controls and indexing controls (`file_scan_depth`, `file_scan_limit`)
 - shortcuts: built-in documentation tab
+
+Global hotkey:
+
+- launcher hotkey is `Cmd+Space` (Spotlight-style toggle)
+- if Spotlight still uses `Cmd+Space`, remap or disable Spotlight shortcut in macOS Keyboard Shortcuts first
+
+Troubleshooting `Cmd+Space` conflict:
+
+- open `System Settings` -> `Keyboard` -> `Keyboard Shortcuts...` -> `Spotlight`
+- disable `Show Spotlight search` or rebind it to a different shortcut
+- reopen look and test `Cmd+Space` again
 
 Other settings UX:
 
@@ -122,9 +182,11 @@ Backend indexing keys:
 - `app_exclude_paths`: comma-separated paths to exclude from app indexing (supports `~/...`, absolute paths, and home-relative names); default: empty
 - `app_exclude_names`: comma-separated app display names to exclude (case-insensitive, `.app` suffix optional); default: empty
 - `file_scan_roots`: comma-separated file roots to scan; supports `~/...`, absolute paths, and home-relative names like `Documents`; default: `Desktop,Documents,Downloads`
-- `file_scan_depth`: recursion depth for file scanning (positive integer); default: `2`
-- `file_scan_limit`: max indexed files per refresh (positive integer); default: `2000`
+- `file_scan_depth`: recursion depth for file scanning (positive integer); default: `4`
+- `file_scan_limit`: max indexed files per refresh (positive integer); default: `8000`
 - `file_exclude_paths`: comma-separated paths to exclude from file/folder indexing (supports `~/...`, absolute paths, and home-relative names); default: empty
+- `translate_allow_network`: allow network translation requests for `t"...` (`true`/`false`); default: `false`
+- `backend_log_level`: backend log verbosity (`error`/`info`/`debug`); default: `error`
 - `skip_dir_names`: comma-separated directory names to ignore during file scan (case-insensitive); default: `node_modules,target,build,dist,library,applications,old firefox data`
 
 UI keys:
@@ -153,6 +215,12 @@ Config behavior:
 - invalid values are ignored and existing/default values are kept
 - `#` starts a comment on a line
 
+Logging privacy:
+
+- default log level is `error`
+- set `LOOK_LOG_LEVEL=info` or `LOOK_LOG_LEVEL=debug` only for local troubleshooting
+- debug logs avoid raw query text and candidate IDs/actions
+
 Example:
 
 ```text
@@ -163,9 +231,11 @@ app_scan_depth=3
 app_exclude_paths=
 app_exclude_names=
 file_scan_roots=Desktop,Documents,Downloads
-file_scan_depth=2
-file_scan_limit=2000
+file_scan_depth=4
+file_scan_limit=8000
 file_exclude_paths=
+translate_allow_network=false
+backend_log_level=error
 skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data
 
 # UI theme
@@ -193,9 +263,14 @@ ui_border_opacity=0.12
 - `Tab`: next result / next command
 - `Shift+Tab`: previous result / previous command
 - `Enter`: open selected result, run command, translate (if `t"...`), or confirm kill
-- `/`: enter command mode
-- `Escape`: exit command mode (or cancel confirmation)
+- `a"`: apps-only search prefix
+- `f"`: files-only search prefix
+- `d"`: folders-only search prefix
+- `r"`: regex search prefix
+- `Cmd+/`: enter command mode
+- `Escape`: hide launcher
 - `Cmd+Enter`: search query on Google
+- `Cmd+Escape`: back to command list (`calc`) while staying in command mode
 - `Cmd+Shift+,`: open/close settings panel
 - `Cmd+Shift+;`: reload `.look.config`
 - `Cmd+-`: zoom out (temporary UI scale)
@@ -205,12 +280,11 @@ ui_border_opacity=0.12
 ### Kill command shortcuts
 
 - `Up` / `Down`: navigate app list
+- `Cmd+1` / `Cmd+2` / `Cmd+3`: switch command
 - `Enter`: select app (shows confirmation)
 - `Y` / click "Yes": confirm kill
 - `N` / click "No": cancel
-
-In Settings panel, use **Save Config** to write current UI values back to `~/.look.config`.
-Font name supports installed-font suggestions in the UI.
+- `Cmd+Escape`: back to command list (calc)
 
 ## What look is for
 
@@ -225,5 +299,5 @@ It is not trying to be a full plugin ecosystem or cloud assistant. The core goal
 ## Planned features
 
 - **App preview**: 2-column layout with icon/name on left, info/preview on right
-- **System info command**: `/sys` command for memory, CPU, battery, weather
+- **System info command**: `/sys` command for model, macOS, memory, CPU usage, battery, uptime, and disk
 - **Homebrew release**: Installation via homebrew
