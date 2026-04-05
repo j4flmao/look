@@ -78,6 +78,12 @@ Install target:
 - relaunch look and test `Cmd+Space`
 - optional: enable `launch_at_login=true` (Advanced tab) so look is ready after sign-in
 
+If look is fully quit and Spotlight shortcut is disabled, relaunch from Terminal:
+
+```bash
+open "/Applications/Look.app"
+```
+
 ### Uninstall
 
 Homebrew install:

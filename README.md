@@ -108,6 +108,12 @@ Enable `Cmd+Space` for look (recommended):
 - disable `Show Spotlight search` or rebind it to another shortcut
 - open look once, then use `Cmd+Space` as launcher toggle
 
+If look is fully quit and Spotlight shortcut is disabled, relaunch from Terminal:
+
+```bash
+open "/Applications/Look.app"
+```
+
 **Unsigned release note:**
 
 - if the app is not Developer ID signed/notarized, macOS Gatekeeper may block first launch
