@@ -96,6 +96,12 @@ brew tap kunkka19xx/tap
 brew install --cask look
 ```
 
+Update:
+
+```bash
+brew upgrade --cask kunkka19xx/tap/look
+```
+
 Enable `Cmd+Space` for look (recommended):
 
 - open `System Settings` -> `Keyboard` -> `Keyboard Shortcuts...` -> `Spotlight`
