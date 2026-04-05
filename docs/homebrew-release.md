@@ -67,6 +67,11 @@ This writes:
 
 Then copy `look.rb` into your tap repository at `Casks/look.rb` (example tap name: `homebrew-tap`).
 
+Required cask entry for CLI command:
+
+- ensure cask includes `binary "Look.app/Contents/MacOS/Look", target: "lookapp"`
+- this avoids collision with macOS built-in `/usr/bin/look`
+
 ## Example install flow (after cask is in tap)
 
 ```bash
