@@ -28,6 +28,7 @@ cask "look" do
   homepage "https://github.com/${REPO_SLUG}"
 
   app "Look.app"
+  binary "Look.app/Contents/MacOS/Look", target: "lookapp"
 end
 EOF
 
