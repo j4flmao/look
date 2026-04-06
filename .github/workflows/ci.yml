@@ -79,10 +79,10 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Audit dependencies (core workspace)
-        run: cargo audit --manifest-path core/Cargo.toml
+        run: cargo audit --file core/Cargo.lock
 
       - name: Audit dependencies (ffi crate)
-        run: cargo audit --manifest-path bridge/ffi/Cargo.toml
+        run: cargo audit --file bridge/ffi/Cargo.lock
 
   secrets-scan:
     name: Secrets Scan
