@@ -27,7 +27,8 @@ jobs:
         with:
           filters: |
             swift:
-              - 'apps/macos/**/*.swift'
+              - 'apps/macos/**'
+              - 'bridge/ffi/**'
             rust:
               - 'core/**'
               - 'bridge/ffi/**'
