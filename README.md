@@ -245,6 +245,12 @@ MIT
 
 ## Community
 
+- Contribution flow:
+  - branch from `dev` and open PRs into `dev`
+  - use PRs to `main` only for maintainer-coordinated hotfix/release work
+  - run local checks before PR: `cargo test --workspace --manifest-path core/Cargo.toml` and `cargo test --manifest-path bridge/ffi/Cargo.toml`
+  - update docs when user-visible behavior changes
+
 - Contributing guide: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Issue templates: [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/)
 
