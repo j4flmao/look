@@ -18,8 +18,7 @@ const ERROR_EXEC_FAILED: &str = "translate_exec_failed";
 const ERROR_PARSE_FAILED: &str = "translate_parse_failed";
 const ERROR_EMPTY_RESULT: &str = "translate_empty_result";
 
-const MESSAGE_NETWORK_DISABLED: &str =
-    "Network translation is disabled. Enable in Advanced settings or set LOOK_TRANSLATE_ALLOW_NETWORK=true.";
+const MESSAGE_NETWORK_DISABLED: &str = "Network translation is disabled. Enable in Advanced settings or set LOOK_TRANSLATE_ALLOW_NETWORK=true.";
 const MESSAGE_EMPTY_TEXT: &str = "Type text after t\" to translate";
 const MESSAGE_REQUEST_FAILED: &str = "Translation request failed";
 const MESSAGE_DECODE_FAILED: &str = "Translation response decode failed";
@@ -28,8 +27,7 @@ const MESSAGE_PARSE_FAILED: &str = "Translation response parse failed";
 const MESSAGE_EMPTY_RESULT: &str = "Translation returned empty result";
 
 const JSON_ERROR_FALLBACK: &str = "{\"error\":\"json error\"}";
-const JSON_TRANSLATE_ERROR_FALLBACK: &str =
-    "{\"original\":\"\",\"translated\":\"\",\"error\":{\"code\":\"unknown\",\"message\":\"Unknown translation error\"}}";
+const JSON_TRANSLATE_ERROR_FALLBACK: &str = "{\"original\":\"\",\"translated\":\"\",\"error\":{\"code\":\"unknown\",\"message\":\"Unknown translation error\"}}";
 
 #[derive(serde::Deserialize)]
 struct TranslateResponse(serde_json::Value);
@@ -42,11 +40,7 @@ pub(crate) fn look_translate_json_impl(
     let target_lang = cstr_to_string(target_lang);
 
     if !network_translation_allowed() {
-        return translate_error_json(
-            &text,
-            ERROR_NETWORK_DISABLED,
-            MESSAGE_NETWORK_DISABLED,
-        );
+        return translate_error_json(&text, ERROR_NETWORK_DISABLED, MESSAGE_NETWORK_DISABLED);
     }
 
     if text.trim().is_empty() {
@@ -55,7 +49,10 @@ pub(crate) fn look_translate_json_impl(
 
     let encoded_text = urlencodingencode(&text);
     let mut url = String::with_capacity(
-        TRANSLATE_URL_PREFIX.len() + TRANSLATE_URL_MIDDLE.len() + target_lang.len() + encoded_text.len(),
+        TRANSLATE_URL_PREFIX.len()
+            + TRANSLATE_URL_MIDDLE.len()
+            + target_lang.len()
+            + encoded_text.len(),
     );
     url.push_str(TRANSLATE_URL_PREFIX);
     url.push_str(&target_lang);
@@ -71,50 +68,30 @@ pub(crate) fn look_translate_json_impl(
     let body = match output {
         Ok(out) => {
             if !out.status.success() {
-                return translate_error_json(
-                    &text,
-                    ERROR_REQUEST_FAILED,
-                    MESSAGE_REQUEST_FAILED,
-                );
+                return translate_error_json(&text, ERROR_REQUEST_FAILED, MESSAGE_REQUEST_FAILED);
             }
             match String::from_utf8(out.stdout) {
                 Ok(s) => s,
                 Err(_) => {
-                    return translate_error_json(
-                        &text,
-                        ERROR_DECODE_FAILED,
-                        MESSAGE_DECODE_FAILED,
-                    );
+                    return translate_error_json(&text, ERROR_DECODE_FAILED, MESSAGE_DECODE_FAILED);
                 }
             }
         }
         Err(_) => {
-            return translate_error_json(
-                &text,
-                ERROR_EXEC_FAILED,
-                MESSAGE_EXEC_FAILED,
-            );
+            return translate_error_json(&text, ERROR_EXEC_FAILED, MESSAGE_EXEC_FAILED);
         }
     };
 
     let parsed: TranslateResponse = match serde_json::from_str(&body) {
         Ok(p) => p,
         Err(_) => {
-            return translate_error_json(
-                &text,
-                ERROR_PARSE_FAILED,
-                MESSAGE_PARSE_FAILED,
-            );
+            return translate_error_json(&text, ERROR_PARSE_FAILED, MESSAGE_PARSE_FAILED);
         }
     };
 
     let translated = parse_translate_response(&parsed.0);
     if translated.trim().is_empty() {
-        return translate_error_json(
-            &text,
-            ERROR_EMPTY_RESULT,
-            MESSAGE_EMPTY_RESULT,
-        );
+        return translate_error_json(&text, ERROR_EMPTY_RESULT, MESSAGE_EMPTY_RESULT);
     }
 
     let result = serde_json::json!({
