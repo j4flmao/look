@@ -28,7 +28,9 @@ enum AppConstants {
         enum Finder {
             static let appName = "finder"
             static let appPath = "/System/Library/CoreServices/Finder.app"
-            static let pinnedResultID = "app:finder:pinned"
+            static var pinnedResultID: String {
+                "app:\(appPath.lowercased())"
+            }
             static let pinnedSubtitle = "Pinned system app"
             static let pinnedScore = 999_999
             static let minPrefixMatchLength = 3

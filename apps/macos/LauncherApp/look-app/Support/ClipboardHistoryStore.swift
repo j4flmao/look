@@ -117,10 +117,14 @@ final class ClipboardHistoryStore: ObservableObject {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return }
 
-        entries.removeAll { $0.content == text }
-
-        let newEntry = ClipboardHistoryEntry(content: text)
-        entries.insert(newEntry, at: 0)
+        if let existingIndex = entries.firstIndex(where: { $0.content == text }) {
+            let existing = entries.remove(at: existingIndex)
+            let movedEntry = ClipboardHistoryEntry(id: existing.id, content: text)
+            entries.insert(movedEntry, at: 0)
+        } else {
+            let newEntry = ClipboardHistoryEntry(content: text)
+            entries.insert(newEntry, at: 0)
+        }
 
         if entries.count > maxEntries {
             entries.removeLast(entries.count - maxEntries)
