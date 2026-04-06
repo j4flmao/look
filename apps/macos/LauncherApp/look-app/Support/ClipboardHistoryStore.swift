@@ -57,6 +57,8 @@ final class ClipboardHistoryStore: ObservableObject {
     private let maxStoredCharacters = AppConstants.Launcher.Clipboard.maxStoredCharacters
     private var monitoringMode: MonitoringMode = .foreground
     private var timer: Timer?
+    private var burstTimer: Timer?
+    private var remainingBurstSamples = 0
     private var lastChangeCount: Int
 
     init() {
@@ -66,6 +68,7 @@ final class ClipboardHistoryStore: ObservableObject {
 
     deinit {
         timer?.invalidate()
+        burstTimer?.invalidate()
     }
 
     func search(_ term: String) -> [ClipboardHistoryEntry] {
@@ -102,6 +105,8 @@ final class ClipboardHistoryStore: ObservableObject {
         guard pasteboard.changeCount != lastChangeCount else { return }
         lastChangeCount = pasteboard.changeCount
 
+        startBurstCaptureWindow()
+
         guard var text = pasteboard.string(forType: .string) else { return }
         if text.count > maxStoredCharacters {
             let originalCount = text.count
@@ -119,6 +124,36 @@ final class ClipboardHistoryStore: ObservableObject {
 
         if entries.count > maxEntries {
             entries.removeLast(entries.count - maxEntries)
+        }
+    }
+
+    private func startBurstCaptureWindow() {
+        remainingBurstSamples = AppConstants.Launcher.Clipboard.burstSampleCount
+        if burstTimer != nil {
+            return
+        }
+
+        burstTimer = Timer.scheduledTimer(
+            withTimeInterval: AppConstants.Launcher.Clipboard.burstPollInterval,
+            repeats: true
+        ) { [weak self] timer in
+            guard let self else {
+                timer.invalidate()
+                return
+            }
+
+            if self.remainingBurstSamples <= 0 {
+                timer.invalidate()
+                self.burstTimer = nil
+                return
+            }
+
+            self.remainingBurstSamples -= 1
+            self.captureLatestClipboardIfNeeded()
+        }
+
+        if let burstTimer {
+            RunLoop.main.add(burstTimer, forMode: .common)
         }
     }
 }

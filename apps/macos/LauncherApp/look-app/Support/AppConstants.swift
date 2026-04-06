@@ -32,6 +32,7 @@ enum AppConstants {
             static let pinnedSubtitle = "Pinned system app"
             static let pinnedScore = 999_999
             static let minPrefixMatchLength = 3
+            static let cannotRevealBanner = "Cannot reveal this target in Finder"
         }
 
         enum Clipboard {
@@ -39,8 +40,10 @@ enum AppConstants {
             static let resultPath = "clipboard://history"
             static let maxEntries = 10
             static let maxStoredCharacters = 30_000
-            static let foregroundPollInterval: TimeInterval = 0.55
-            static let backgroundPollInterval: TimeInterval = 3.0
+            static let foregroundPollInterval: TimeInterval = 0.35
+            static let backgroundPollInterval: TimeInterval = 0.9
+            static let burstPollInterval: TimeInterval = 0.08
+            static let burstSampleCount = 10
             static let copiedBanner = "Copied clipboard item"
             static let deletedBanner = "Clipboard item deleted"
             static let nonFileBanner = "Clipboard items are not files"

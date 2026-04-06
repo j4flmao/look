@@ -500,7 +500,19 @@ struct LauncherView: View {
 
         switch selected.kind {
         case .app, .file, .folder:
-            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: selected.path)])
+            if selected.path.contains(":") && !selected.path.hasPrefix("/") {
+                if let url = URL(string: selected.path) {
+                    NSWorkspace.shared.open(url)
+                } else {
+                    showBanner(
+                        AppConstants.Launcher.Finder.cannotRevealBanner,
+                        style: .info,
+                        duration: AppConstants.Launcher.Clipboard.infoBannerDuration
+                    )
+                }
+            } else {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: selected.path)])
+            }
         case .clipboard:
             showBanner(
                 AppConstants.Launcher.Clipboard.nonFileBanner,
