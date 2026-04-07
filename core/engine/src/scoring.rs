@@ -206,21 +206,37 @@ mod tests {
     use super::*;
 
     fn app(title: &str, path: &str) -> Candidate {
-        Candidate::new(&format!("app.{}", title.to_lowercase()), CandidateKind::App, title, path)
+        Candidate::new(
+            &format!("app.{}", title.to_lowercase()),
+            CandidateKind::App,
+            title,
+            path,
+        )
     }
 
     fn file(title: &str, path: &str) -> Candidate {
-        Candidate::new(&format!("file.{}", title.to_lowercase()), CandidateKind::File, title, path)
+        Candidate::new(
+            &format!("file.{}", title.to_lowercase()),
+            CandidateKind::File,
+            title,
+            path,
+        )
     }
 
     fn folder(title: &str, path: &str) -> Candidate {
-        Candidate::new(&format!("folder.{}", title.to_lowercase()), CandidateKind::Folder, title, path)
+        Candidate::new(
+            &format!("folder.{}", title.to_lowercase()),
+            CandidateKind::Folder,
+            title,
+            path,
+        )
     }
 
     #[test]
     fn contains_match_title_scores_higher_than_subtitle() {
         let title_score = contains_match_score("safari", "safari browser", None).unwrap();
-        let subtitle_score = contains_match_score("safari", "other", Some("safari browser")).unwrap();
+        let subtitle_score =
+            contains_match_score("safari", "other", Some("safari browser")).unwrap();
         assert!(title_score > subtitle_score);
     }
 

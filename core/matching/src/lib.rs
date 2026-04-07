@@ -219,6 +219,9 @@ mod tests {
         let subseq = fuzzy_score("sri", "safari").unwrap();
 
         assert!(exact > prefix, "exact ({exact}) > prefix ({prefix})");
-        assert!(prefix > subseq, "prefix ({prefix}) > subsequence ({subseq})");
+        assert!(
+            prefix > subseq,
+            "prefix ({prefix}) > subsequence ({subseq})"
+        );
     }
 }
