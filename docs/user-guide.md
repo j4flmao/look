@@ -160,6 +160,8 @@ Path-style query is supported directly in normal search:
 
 Quick prefix action in the same input:
 
+- type `t"word or phrase` and press `Enter`: translate text via network API and show result banner in app
+- type `z"word or phrase` and press `Enter`: show Look Up definition/explanation under the search bar
 - type `a"term`: search apps only
 - type `f"term`: search files only
 - type `d"term`: search folders only
@@ -185,7 +187,7 @@ Translation privacy control:
 - translation network access is disabled by default
 - `translate_allow_network` controls whether translation requests are allowed
 - optional env override: `LOOK_TRANSLATE_ALLOW_NETWORK=true`
-- recommended default: keep this disabled for a local-first workflow
+- when disabled, `t"...` returns a local warning and does not send text to network (`z"...` still works via local macOS dictionary)
 
 ### 3) Web search handoff
 
@@ -384,7 +386,7 @@ ui_border_opacity=0.12
 
 - `Tab`: next result / next command
 - `Shift+Tab`: previous result / previous command
-- `Enter`: open selected result, run command, or confirm kill
+- `Enter`: open selected result, run command, translate (if `t"...`) or Look Up (if `z"...`), or confirm kill
 - `a"`: apps-only search prefix
 - `f"`: files-only search prefix
 - `d"`: folders-only search prefix
