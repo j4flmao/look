@@ -9,9 +9,7 @@ A minimal, rofi-inspired macOS launcher focused on fast local actions:
 - clipboard history search (`c"`) with inline preview
 - quick command mode for calculator, shell, kill, and system info
 
-**Introduction video:**
-
-[Video](https://www.youtube.com/watch?v=XtGcLfmXePU)
+**Introduction video:** _TODO_
 
 Default behavior:
 

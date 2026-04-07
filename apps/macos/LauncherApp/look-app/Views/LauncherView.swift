@@ -175,7 +175,16 @@ struct LauncherView: View {
         var unique: [LauncherResult] = []
         for item in sourceResults {
             let normalizedTitle = item.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let key = "\(item.kind.rawValue):\(normalizedTitle)"
+            let normalizedPath = item.path.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let key: String
+            switch item.kind {
+            case .app:
+                key = "\(item.kind.rawValue):\(normalizedTitle)"
+            case .file, .folder:
+                key = "\(item.kind.rawValue):\(normalizedPath)"
+            case .clipboard:
+                key = item.id
+            }
             if key.isEmpty {
                 unique.append(item)
                 continue
