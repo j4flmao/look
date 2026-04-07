@@ -6,6 +6,7 @@ It helps you do three things quickly in one window:
 
 - launch installed apps
 - search local files and folders by name
+- search clipboard history snippets (`c"` prefix)
 - run quick commands (calculator, shell, kill, and system info)
 
 The interface is local-first, lightweight, and designed for low-friction daily use.
@@ -143,6 +144,9 @@ This includes:
 - press `Shift+Tab` to move up the list
 - press `Up` / `Down` to move selection
 - press `Enter` to open the selected result
+- press `Cmd+C` to copy selected file/folder to pasteboard
+- press `Cmd+F` to reveal selected app/file/folder in Finder
+- press `Cmd+H` to open/close the in-window shortcut help screen
 - click a row to open it
 
 If results look stale or missing after config/indexing changes:
@@ -162,15 +166,30 @@ Quick prefix action in the same input:
 - type `f"term`: search files only
 - type `d"term`: search folders only
 - type `r"pattern`: search by regex (case-insensitive)
+- type `c"term`: search recent clipboard text history (latest 10)
+
+### 2) Clipboard history search
+
+Clipboard history is available directly from the main query input:
+
+- type `c"` to list recent clipboard items
+- type `c"word` to filter history by text
+- press `Enter` on a clipboard row to copy that item back to macOS clipboard
+- use the `Delete` button in preview panel to remove sensitive clipboard entries from look history
+
+Notes:
+
+- clipboard history currently stores text clipboard items only
+- history is in-memory for the running app session
 
 Translation privacy control:
 
-- network translation is disabled by default
-- enable translation in `Advanced` settings and click `Save Config`
+- translation network access is disabled by default
+- `translate_allow_network` controls whether translation requests are allowed
 - optional env override: `LOOK_TRANSLATE_ALLOW_NETWORK=true`
 - when disabled, `t"...` returns a local warning and does not send text to network (`z"...` still works via local macOS dictionary)
 
-### 2) Web search handoff
+### 3) Web search handoff
 
 If you want to search the web from the same query:
 
@@ -178,7 +197,7 @@ If you want to search the web from the same query:
 
 Current default provider: Google.
 
-### 3) Command mode
+### 4) Command mode
 
 To enter command mode:
 
@@ -282,7 +301,7 @@ Backend indexing keys:
 - `file_scan_depth`: recursion depth for file scanning (positive integer); default: `4`
 - `file_scan_limit`: max indexed files per refresh (positive integer); default: `8000`
 - `file_exclude_paths`: comma-separated paths to exclude from file/folder indexing (supports `~/...`, absolute paths, and home-relative names); default: empty
-- `translate_allow_network`: allow network translation requests for `t"...` (`true`/`false`); default: `false`
+- `translate_allow_network`: allow network translation requests (`true`/`false`); default: `false`
 - `backend_log_level`: backend log verbosity (`error`/`info`/`debug`); default: `error`
 - `launch_at_login`: auto-start look after user sign-in (`true`/`false`); default: `true`
 - `skip_dir_names`: comma-separated directory names to ignore during file scan (case-insensitive); default: `node_modules,target,build,dist,library,applications,old firefox data`
@@ -366,10 +385,14 @@ ui_border_opacity=0.12
 - `f"`: files-only search prefix
 - `d"`: folders-only search prefix
 - `r"`: regex search prefix
+- `c"`: clipboard history search prefix
 - `Cmd+/`: enter command mode
+- `Cmd+H`: toggle in-window keyboard help screen
 - `Escape`: back to app list (in command mode), otherwise hide launcher
 - `Shift+Escape`: hide launcher
 - `Cmd+Enter`: search query on Google
+- `Cmd+C`: copy selected file/folder to pasteboard
+- `Cmd+F`: reveal selected app/file/folder in Finder
 - `Cmd+Escape`: back to command list (`calc`) while staying in command mode
 - `Cmd+Q`: hide launcher
 - `Cmd+Option+Q`: quit app

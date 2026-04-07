@@ -6,12 +6,19 @@ A minimal, rofi-inspired macOS launcher focused on fast local actions:
 
 - launch installed apps
 - search local files and folders by name
+- clipboard history search (`c"`) with inline preview
 - quick command mode for calculator, shell, kill, and system info
+
+**Introduction video:**
+
+[Video](https://www.youtube.com/watch?v=XtGcLfmXePU)
 
 Default behavior:
 
 - translate text with `t"word` (network) or show macOS Look Up definition below search with `z"word` + `Enter`
 - web search handoff with `Cmd+Enter` (Google)
+- reveal selected app/file/folder in Finder with `Cmd+F`
+- command mode with `Cmd+/` (`calc`, `shell`, `kill`, `sys`)
 - force-quit flow in command mode (`kill`)
 
 The project is designed around low latency, keyboard-first interaction, and a small native footprint.
@@ -48,19 +55,33 @@ Indexing config supports include roots plus exclude rules for both apps and file
 ├── bridge/
 │   └── ffi/
 ├── docs/
-├── benchmarks/
 ├── scripts/
-├── assets/
-└── examples/
+└── assets/
 ```
+
+## UI
+
+![Look UI 1](assets/look-ui/1.png)
+
+![Look UI 2](assets/look-ui/2.png)
+
+![Look UI 3](assets/look-ui/3.png)
+
+![Look UI 4](assets/look-ui/4.png)
+
+![Look UI 5](assets/look-ui/5.png)
+
+![Look UI 6](assets/look-ui/6.png)
 
 ## Current status
 
 - Swift macOS app scaffold is located at `apps/macos/LauncherApp/look-app/` with project file `apps/macos/LauncherApp/look-app.xcodeproj`.
 - Rust core workspace is initialized under `core/`.
 - FFI bridge crate is initialized under `bridge/ffi/`.
+- Benchmark example lives at `core/engine/examples/perf_bench.rs`.
 - Architecture, roadmap, and initial design decisions are documented under `docs/`.
 - UI includes: Spotlight-style launcher window (hidden from `Cmd+Tab`), theme/settings panel, command mode, and keyboard-first navigation.
+
 - Backend currently includes: SQLite-backed candidate storage, dynamic app/settings/file indexing, and usage event logging.
 - User-facing guide: [docs/user-guide.md](docs/user-guide.md).
 - Backend contributor guide: [docs/backend-guide.md](docs/backend-guide.md).
@@ -82,7 +103,10 @@ Indexing config supports include roots plus exclude rules for both apps and file
 - `Enter`: launch selected app, execute active command, translate (if `t"...`) or Look Up (if `z"...`), or confirm kill
 - `Y` / `N`: confirm/cancel in kill command confirmation
 - `Cmd+Enter`: web search current query using Google
+- `Cmd+C`: copy selected file/folder to pasteboard
+- `Cmd+F`: reveal selected app/file/folder in Finder
 - `a"` / `f"` / `d"` / `r"`: apps/files/folders/regex scoped query prefix
+- `c"`: clipboard history scoped query prefix
 - `Cmd+Shift+,`: open/close settings panel
 - `Cmd+Shift+;`: reload `.look.config`
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
@@ -195,15 +219,16 @@ In scope for first milestone:
 - global hotkey opens launcher
 - query app index and launch with Enter
 - query file/folder name index and open/reveal
+- query clipboard history (`c"`) and copy selected history item back to clipboard
 - web search handoff with Google
 - translate text with `t"...` (network) or show macOS Look Up definition below search with `z"...`
 - command mode with `calc`, `shell`, `kill`, and `sys`
+- optional translation exists behind network opt-in (`translate_allow_network=true`)
 - predictable, local-first behavior
 
 Out of scope for v1:
 
 - plugins
-- clipboard history
 - online-first behavior
 - semantic/vector search
 - content indexing
@@ -222,6 +247,12 @@ Out of scope for v1:
 MIT
 
 ## Community
+
+- Contribution flow:
+  - branch from `dev` and open PRs into `dev`
+  - use PRs to `main` only for maintainer-coordinated hotfix/release work
+  - run local checks before PR: `cargo test --workspace --manifest-path core/Cargo.toml` and `cargo test --manifest-path bridge/ffi/Cargo.toml`
+  - update docs when user-visible behavior changes
 
 - Contributing guide: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Issue templates: [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/)
