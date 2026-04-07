@@ -1,7 +1,13 @@
 import AppKit
+import CoreServices
 import SwiftUI
 
 struct LauncherView: View {
+    private enum TranslationCommand {
+        case network(String)
+        case lookup(String)
+    }
+
     private enum BannerStyle {
         case success
         case error
@@ -37,10 +43,12 @@ struct LauncherView: View {
     @State private var bannerStyle: BannerStyle = .info
     @State private var bannerCopyText: String?
     @State private var bannerTask: Task<Void, Never>?
+    @State private var lookupPreviewTask: Task<Void, Never>?
     @State private var selectedKillSuggestionIndex: Int?
     @State private var pendingKillApp: (NSRunningApplication, Int)?
     @State private var showsHelpScreen = false
     @State private var focusRequestToken: UInt64 = 0
+    @State private var lookupDefinition: LookupDefinition?
     @FocusState private var isQueryFocused: Bool
 
     private let bridge = EngineBridge.shared
@@ -149,6 +157,14 @@ struct LauncherView: View {
 
     private var displayedResults: [LauncherResult] {
         isClipboardQuery ? clipboardResults : backendFilteredResults
+    }
+
+    private var isLookupQuery: Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if case .lookup = extractTranslationQuery(from: trimmed) {
+            return true
+        }
+        return false
     }
 
     private var commandNamePart: String {
@@ -363,8 +379,8 @@ struct LauncherView: View {
             }
         } else {
             let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let translationTarget = extractTranslationQuery(from: trimmed) {
-                handleTranslation(text: translationTarget)
+            if let translationCommand = extractTranslationQuery(from: trimmed) {
+                handleTranslation(command: translationCommand)
                 isQueryFocused = true
             } else {
                 openSelectedApp()
@@ -376,18 +392,32 @@ struct LauncherView: View {
         }
     }
 
-    private func extractTranslationQuery(from input: String) -> String? {
+    private func extractTranslationQuery(from input: String) -> TranslationCommand? {
         if input.hasPrefix("t\"") {
             let text = String(input.dropFirst(2)).trimmingCharacters(in: .whitespacesAndNewlines)
-            return text.isEmpty ? nil : text
+            return text.isEmpty ? nil : .network(text)
+        }
+
+        if input.count >= 3, input.prefix(3).lowercased() == "tw\"" {
+            let text = String(input.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : .lookup(text)
         }
 
         if input.lowercased().hasPrefix("tr ") {
             let text = String(input.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
-            return text.isEmpty ? nil : text
+            return text.isEmpty ? nil : .network(text)
         }
 
         return nil
+    }
+
+    private func handleTranslation(command: TranslationCommand) {
+        switch command {
+        case .network(let text):
+            handleNetworkTranslation(text: text)
+        case .lookup(let text):
+            handleLookupTranslation(text: text)
+        }
     }
 
     private func runCommandModeAction() {
@@ -645,8 +675,8 @@ struct LauncherView: View {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        if let translationTarget = extractTranslationQuery(from: trimmed) {
-            handleTranslation(text: translationTarget)
+        if let translationCommand = extractTranslationQuery(from: trimmed) {
+            handleTranslation(command: translationCommand)
             isQueryFocused = true
             return
         }
@@ -762,6 +792,7 @@ struct LauncherView: View {
     private func hideLauncherWindow() {
         guard let window = launcherWindow() else { return }
         window.orderOut(nil)
+        NSApp.hide(nil)
         refreshClipboardMonitoringMode()
     }
 
@@ -774,7 +805,118 @@ struct LauncherView: View {
         }
     }
 
-    private func handleTranslation(text: String) {
+    private func handleLookupTranslation(text: String) {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            showBanner("Type text after tw\" to translate", style: .error, duration: 3.2)
+            return
+        }
+
+        Task {
+            let results = await fetchAllTranslations(for: normalized)
+            await MainActor.run {
+                lookupDefinition = LookupDefinition(
+                    query: normalized,
+                    sourceLabel: "Input",
+                    sections: [
+                        LookupTranslationSection(label: "English", translated: results.en.translated, dictionaryDefinition: results.en.dictionaryDefinition, failed: results.en.translated == nil),
+                        LookupTranslationSection(label: "Tiếng Việt", translated: results.vi.translated, dictionaryDefinition: results.vi.dictionaryDefinition, failed: results.vi.translated == nil),
+                        LookupTranslationSection(label: "日本語", translated: results.ja.translated, dictionaryDefinition: results.ja.dictionaryDefinition, failed: results.ja.translated == nil),
+                    ]
+                )
+            }
+        }
+    }
+
+    private func previewLookupDefinition(for input: String) {
+        lookupPreviewTask?.cancel()
+
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard case .lookup(let text) = extractTranslationQuery(from: trimmed) else {
+            lookupDefinition = nil
+            return
+        }
+
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty else {
+            lookupDefinition = nil
+            return
+        }
+
+        let expectedQuery = trimmed
+        lookupPreviewTask = Task {
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            guard !Task.isCancelled else { return }
+
+            let results = await fetchAllTranslations(for: normalizedText)
+
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                let latestQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard latestQuery == expectedQuery else { return }
+                lookupDefinition = LookupDefinition(
+                    query: normalizedText,
+                    sourceLabel: "Input",
+                    sections: [
+                        LookupTranslationSection(label: "English", translated: results.en.translated, dictionaryDefinition: results.en.dictionaryDefinition, failed: results.en.translated == nil),
+                        LookupTranslationSection(label: "Tiếng Việt", translated: results.vi.translated, dictionaryDefinition: results.vi.dictionaryDefinition, failed: results.vi.translated == nil),
+                        LookupTranslationSection(label: "日本語", translated: results.ja.translated, dictionaryDefinition: results.ja.dictionaryDefinition, failed: results.ja.translated == nil),
+                    ]
+                )
+            }
+        }
+    }
+
+    private struct TranslationResult {
+        let translated: String?
+        let dictionaryDefinition: LookupPresentation?
+    }
+
+    private func fetchAllTranslations(for text: String) async -> (en: TranslationResult, vi: TranslationResult, ja: TranslationResult) {
+        await withTaskGroup(of: (String, TranslationResult).self) { group in
+            group.addTask {
+                let translated = self.bridge.translate(text: text, targetLang: "en")?.translated
+                let definition = translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
+                return ("en", TranslationResult(translated: translated, dictionaryDefinition: definition))
+            }
+            group.addTask {
+                let translated = self.bridge.translate(text: text, targetLang: "vi")?.translated
+                let definition = translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
+                return ("vi", TranslationResult(translated: translated, dictionaryDefinition: definition))
+            }
+            group.addTask {
+                let translated = self.bridge.translate(text: text, targetLang: "ja")?.translated
+                let definition = translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
+                return ("ja", TranslationResult(translated: translated, dictionaryDefinition: definition))
+            }
+
+            var en = TranslationResult(translated: nil, dictionaryDefinition: nil)
+            var vi = TranslationResult(translated: nil, dictionaryDefinition: nil)
+            var ja = TranslationResult(translated: nil, dictionaryDefinition: nil)
+            for await (lang, result) in group {
+                switch lang {
+                case "en": en = result
+                case "vi": vi = result
+                case "ja": ja = result
+                default: break
+                }
+            }
+            return (en, vi, ja)
+        }
+    }
+
+    private func fetchRawDefinition(for text: String) -> String? {
+        let nsText = text as NSString
+        let range = CFRange(location: 0, length: nsText.length)
+        guard let unmanaged = DCSCopyTextDefinition(nil, text as CFString, range) else {
+            return nil
+        }
+        let raw = (unmanaged.takeRetainedValue() as String)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return raw.isEmpty ? nil : raw
+    }
+
+    private func handleNetworkTranslation(text: String) {
         let result = bridge.translate(text: text)
         if let translated = result?.translated, !translated.isEmpty {
             showBanner(
@@ -906,6 +1048,8 @@ struct LauncherView: View {
                                 themeStore: themeStore
                             )
                         }
+                    } else if isLookupQuery {
+                        LookupDefinitionPanelView(definition: lookupDefinition, themeStore: themeStore)
                     } else {
                         if showsHelpScreen {
                             LauncherHelpScreenView(themeStore: themeStore)
@@ -985,10 +1129,12 @@ struct LauncherView: View {
         .onDisappear {
             searchTask?.cancel()
             bannerTask?.cancel()
+            lookupPreviewTask?.cancel()
             keyboardMonitor.stop()
             clipboardStore.setMonitoringMode(.background)
         }
         .onChange(of: query) { _, _ in
+            previewLookupDefinition(for: query)
             if !isCommandMode {
                 if showsHelpScreen {
                     showsHelpScreen = false
