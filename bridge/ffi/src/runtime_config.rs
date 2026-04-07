@@ -100,18 +100,6 @@ fn default_config_path() -> PathBuf {
     PathBuf::from(home).join(".look.config")
 }
 
-fn env_bool(name: &str) -> Option<bool> {
-    env::var(name).ok().and_then(|value| parse_bool(&value))
-}
-
-fn parse_bool(value: &str) -> Option<bool> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "1" | "true" | "yes" | "on" => Some(true),
-        "0" | "false" | "no" | "off" => Some(false),
-        _ => None,
-    }
-}
-
 fn parse_log_level(value: &str) -> Option<LogLevel> {
     match value.trim().to_ascii_lowercase().as_str() {
         "debug" => Some(LogLevel::Debug),
