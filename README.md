@@ -9,9 +9,7 @@ A minimal, rofi-inspired macOS launcher focused on fast local actions:
 - clipboard history search (`c"`) with inline preview
 - quick command mode for calculator, shell, kill, and system info
 
-**Introduction video:**
-
-[Video](https://www.youtube.com/watch?v=XtGcLfmXePU)
+**Introduction video:** _TODO_
 
 Default behavior:
 
@@ -73,6 +71,12 @@ Indexing config supports include roots plus exclude rules for both apps and file
 ![Look UI 5](assets/look-ui/5.png)
 
 ![Look UI 6](assets/look-ui/6.png)
+
+![Look UI 7](assets/look-ui/7.png)
+
+![Look UI 8](assets/look-ui/8.png)
+
+![Look UI 9](assets/look-ui/9.png)
 
 ## Current status
 
