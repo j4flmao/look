@@ -9,14 +9,13 @@ A minimal, rofi-inspired macOS launcher focused on fast local actions:
 - clipboard history search (`c"`) with inline preview
 - quick command mode for calculator, shell, kill, and system info
 
-**Introduction video:**
-
-[Video](https://www.youtube.com/watch?v=XtGcLfmXePU)
+**Introduction video:** _TODO_
 
 Default behavior:
 
 - launch top result with `Enter`
 - clipboard history query with `c"<word>`
+- translate text with `t"word` (network) or translate to 3 languages (EN/VI/JA) with `tw"word` + `Enter`
 - web search handoff with `Cmd+Enter` (Google)
 - reveal selected app/file/folder in Finder with `Cmd+F`
 - command mode with `Cmd+/` (`calc`, `shell`, `kill`, `sys`)
@@ -74,6 +73,12 @@ Indexing config supports include roots plus exclude rules for both apps and file
 
 ![Look UI 6](assets/look-ui/6.png)
 
+![Look UI 7](assets/look-ui/7.png)
+
+![Look UI 8](assets/look-ui/8.png)
+
+![Look UI 9](assets/look-ui/9.png)
+
 ## Current status
 
 - Swift macOS app scaffold is located at `apps/macos/LauncherApp/look-app/` with project file `apps/macos/LauncherApp/look-app.xcodeproj`.
@@ -101,7 +106,7 @@ Indexing config supports include roots plus exclude rules for both apps and file
 - `Cmd+Esc`: back to command list (`calc`) while staying in command mode
 - `Cmd+Q`: hide launcher (Spotlight-style safety)
 - `Cmd+Option+Q`: quit app
-- `Enter`: launch selected app, execute active command, or confirm kill
+- `Enter`: launch selected app, execute active command, translate (if `t"...`) or translate EN↔VI↔JA (if `tw"...`), or confirm kill
 - `Y` / `N`: confirm/cancel in kill command confirmation
 - `Cmd+Enter`: web search current query using Google
 - `Cmd+C`: copy selected file/folder to pasteboard
@@ -189,6 +194,25 @@ cd bridge/ffi
 cargo check
 ```
 
+Run local dev app (from repository root):
+
+```bash
+make app-run
+```
+
+`make app-run` behavior:
+
+- builds local app bundle with Xcode (`Debug`)
+- stops any running `Look` process first (including Homebrew-installed app instance)
+- launches local app with `LOOK_CONFIG_PATH=$HOME/.look.dev.config`
+- enables a red `TEST APP` badge in the window so local/dev run is visually distinct
+
+Override dev config path when needed:
+
+```bash
+make app-run DEV_CONFIG_PATH="$HOME/.look.qa.config"
+```
+
 Prepare release artifacts/scripts (maintainers):
 
 ```bash
@@ -222,6 +246,7 @@ In scope for first milestone:
 - query file/folder name index and open/reveal
 - query clipboard history (`c"`) and copy selected history item back to clipboard
 - web search handoff with Google
+- translate text with `t"...` (network) or translate to EN/VI/JA with `tw"...`
 - command mode with `calc`, `shell`, `kill`, and `sys`
 - optional translation exists behind network opt-in (`translate_allow_network=true`)
 - predictable, local-first behavior
