@@ -153,4 +153,3 @@ fn is_valid_lang_code(code: &str) -> bool {
     }
     code.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
-
