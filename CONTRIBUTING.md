@@ -74,6 +74,30 @@ Before opening PR:
 - run local checks from the Development setup section
 - ensure docs are updated when behavior changes
 
+## Git guidelines for contributors
+
+- always branch from `dev`; do not develop directly on `dev`
+- keep branches short-lived and focused to reduce merge conflicts
+- update your branch from `dev` before requesting review:
+
+```bash
+git fetch origin
+git checkout <your-branch>
+git rebase origin/dev
+```
+
+- if your branch is shared and you want to avoid rewriting history, merge instead of rebase:
+
+```bash
+git fetch origin
+git checkout <your-branch>
+git merge origin/dev
+```
+
+- if GitHub shows "This branch has conflicts": resolve locally, run checks, then push the resolution commit
+- avoid force-pushing shared branches unless maintainers explicitly agree
+- when adding limits/thresholds for safety or validation, prefer named constants over magic numbers
+
 ## CI behavior
 
 CI runs for pushes and pull requests targeting `dev` and `main`.
