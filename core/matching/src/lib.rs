@@ -1,5 +1,22 @@
+pub struct PreparedQuery<'a> {
+    raw: &'a str,
+    chars: Vec<char>,
+}
+
+pub fn prepare_query(query: &str) -> PreparedQuery<'_> {
+    PreparedQuery {
+        raw: query,
+        chars: query.chars().collect(),
+    }
+}
+
 pub fn fuzzy_score(query: &str, title: &str) -> Option<i64> {
-    let q = query;
+    let prepared = prepare_query(query);
+    fuzzy_score_prepared(&prepared, title)
+}
+
+pub fn fuzzy_score_prepared(query: &PreparedQuery<'_>, title: &str) -> Option<i64> {
+    let q = query.raw;
     let t = title;
 
     // Tier 1: exact match — highest possible score
@@ -13,22 +30,24 @@ pub fn fuzzy_score(query: &str, title: &str) -> Option<i64> {
     }
 
     // Tier 3: enhanced subsequence matching with heuristic bonuses
-    let qchars: Vec<char> = q.chars().collect();
-    if qchars.is_empty() {
+    if query.chars.is_empty() {
         return Some(1_500 - t.len() as i64);
     }
 
-    let tchars: Vec<char> = t.chars().collect();
     let mut qi = 0usize;
     let mut score = 0i64;
     let mut prev_match_idx: Option<usize> = None;
     let mut consecutive: i64 = 0;
+    let mut prev_char: Option<char> = None;
+    let mut ti = 0usize;
 
-    for (ti, &ch) in tchars.iter().enumerate() {
-        if qi >= qchars.len() {
+    for ch in t.chars() {
+        if qi >= query.chars.len() {
             break;
         }
-        if ch != qchars[qi] {
+        if ch != query.chars[qi] {
+            prev_char = Some(ch);
+            ti += 1;
             continue;
         }
         qi += 1;
@@ -52,7 +71,7 @@ pub fn fuzzy_score(query: &str, title: &str) -> Option<i64> {
 
         // Word boundary bonus: match right after a separator or at start
         // "vsc" matching V|isual S|tudio C|ode — each capital/boundary hit is strong signal
-        if ti == 0 || matches!(tchars[ti - 1], ' ' | '-' | '_' | '/' | '.') {
+        if ti == 0 || matches!(prev_char, Some(' ' | '-' | '_' | '/' | '.')) {
             score += 20;
         }
 
@@ -62,9 +81,11 @@ pub fn fuzzy_score(query: &str, title: &str) -> Option<i64> {
         }
 
         prev_match_idx = Some(ti);
+        prev_char = Some(ch);
+        ti += 1;
     }
 
-    if qi == qchars.len() {
+    if qi == query.chars.len() {
         Some(score.max(1))
     } else {
         None

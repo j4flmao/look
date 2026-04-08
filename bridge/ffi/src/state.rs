@@ -30,17 +30,13 @@ pub(crate) fn default_db_path() -> PathBuf {
 
 pub(crate) fn with_engine<T>(f: impl FnOnce(&QueryEngine) -> T) -> T {
     let lock = engine_cache();
-    let guard = lock
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     f(&guard)
 }
 
 pub(crate) fn with_engine_mut<T>(f: impl FnOnce(&mut QueryEngine) -> T) -> T {
     let lock = engine_cache();
-    let mut guard = lock
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     f(&mut guard)
 }
 
@@ -58,9 +54,7 @@ pub(crate) fn refresh_engine_cache() {
 pub(crate) fn store_json_allocation(cstring: CString) -> *mut c_char {
     let ptr = cstring.as_ptr() as usize;
     let lock = JSON_ALLOCS.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut allocations = lock
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut allocations = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     allocations.insert(ptr, cstring);
     ptr as *mut c_char
 }

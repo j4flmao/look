@@ -7,7 +7,7 @@ use crate::scoring::{
     path_depth_penalty, path_match_score, push_top_k, query_kind_penalty,
 };
 use look_indexing::Candidate;
-use look_matching::fuzzy_score;
+use look_matching::{fuzzy_score_prepared, prepare_query};
 use look_ranking::rank_score;
 use regex::RegexBuilder;
 use std::collections::BinaryHeap;
@@ -89,6 +89,7 @@ impl QueryEngine {
         }
 
         let normalized_query = parsed_query.normalized_query;
+        let prepared_query = prepare_query(&normalized_query);
         let mut top = BinaryHeap::new();
         let has_path_hint = normalized_query.contains('/');
 
@@ -105,10 +106,10 @@ impl QueryEngine {
                 .map(|subtitle| normalize_for_search(subtitle));
             let path_search = normalize_for_search(&candidate.path);
 
-            let title_score = fuzzy_score(&normalized_query, &title_search);
+            let title_score = fuzzy_score_prepared(&prepared_query, &title_search);
             let subtitle_score = subtitle_search
                 .as_ref()
-                .and_then(|subtitle| fuzzy_score(&normalized_query, subtitle))
+                .and_then(|subtitle| fuzzy_score_prepared(&prepared_query, subtitle))
                 .map(|value| value / 2);
             let contains_score =
                 contains_match_score(&normalized_query, &title_search, subtitle_search.as_deref());

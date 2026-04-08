@@ -42,11 +42,7 @@ pub(crate) fn look_translate_json_impl(
     }
 
     if !is_valid_lang_code(&target_lang) {
-        return translate_error_json(
-            &text,
-            "invalid_target_lang",
-            "Invalid target language code",
-        );
+        return translate_error_json(&text, "invalid_target_lang", "Invalid target language code");
     }
 
     let encoded_text = percent_encode(&text);
@@ -155,7 +151,6 @@ fn is_valid_lang_code(code: &str) -> bool {
     if code.is_empty() || code.len() > 10 {
         return false;
     }
-    code.bytes()
-        .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    code.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
