@@ -20,7 +20,7 @@ updates:
       - "rust"
     reviewers:
       - "dependabot-preview[bot]"
-    target-branch: "develop"
+    target-branch: "dev"
     ignore:
       - dependency-name: "tokio"
         update-types:
@@ -47,7 +47,7 @@ updates:
       - "rust"
     reviewers:
       - "dependabot-preview[bot]"
-    target-branch: "develop"
+    target-branch: "dev"
     ignore:
       - dependency-name: "tokio"
         update-types:
