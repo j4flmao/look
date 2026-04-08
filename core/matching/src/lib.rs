@@ -3,6 +3,20 @@ pub struct PreparedQuery<'a> {
     chars: Vec<char>,
 }
 
+impl PreparedQuery<'_> {
+    fn raw(&self) -> &str {
+        self.raw
+    }
+
+    fn len(&self) -> usize {
+        self.chars.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.chars.is_empty()
+    }
+}
+
 pub fn prepare_query(query: &str) -> PreparedQuery<'_> {
     PreparedQuery {
         raw: query,
@@ -16,7 +30,7 @@ pub fn fuzzy_score(query: &str, title: &str) -> Option<i64> {
 }
 
 pub fn fuzzy_score_prepared(query: &PreparedQuery<'_>, title: &str) -> Option<i64> {
-    let q = query.raw;
+    let q = query.raw();
     let t = title;
 
     if t == q {
@@ -31,21 +45,17 @@ pub fn fuzzy_score_prepared(query: &PreparedQuery<'_>, title: &str) -> Option<i6
     let mut score = 0i64;
 
     for ch in t.chars() {
-        if qi < query.chars.len() && ch == query.chars[qi] {
+        if qi < query.len() && ch == query.chars[qi] {
             qi += 1;
             score += 10;
         }
     }
 
-    if qi == query.chars.len() {
-        Some(score)
-    } else {
-        None
-    }
+    if qi == query.len() { Some(score) } else { None }
 }
 
 pub fn fuzzy_quality_bonus_prepared(query: &PreparedQuery<'_>, title: &str) -> i64 {
-    if query.chars.is_empty() || title == query.raw || title.starts_with(query.raw) {
+    if query.is_empty() || title == query.raw() || title.starts_with(query.raw()) {
         return 0;
     }
 
@@ -56,7 +66,7 @@ pub fn fuzzy_quality_bonus_prepared(query: &PreparedQuery<'_>, title: &str) -> i
     let mut prev_char: Option<char> = None;
 
     for (ti, ch) in title.chars().enumerate() {
-        if qi >= query.chars.len() {
+        if qi >= query.len() {
             break;
         }
 
@@ -90,11 +100,7 @@ pub fn fuzzy_quality_bonus_prepared(query: &PreparedQuery<'_>, title: &str) -> i
         prev_char = Some(ch);
     }
 
-    if qi == query.chars.len() {
-        bonus.max(0)
-    } else {
-        0
-    }
+    if qi == query.len() { bonus.max(0) } else { 0 }
 }
 
 #[cfg(test)]

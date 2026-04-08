@@ -143,6 +143,7 @@ pub(crate) struct ScoredMatch {
     candidate: Candidate,
     score: i64,
     sort_title: String,
+    search_title: String,
 }
 
 impl PartialEq for ScoredMatch {
@@ -156,10 +157,26 @@ impl Eq for ScoredMatch {}
 impl ScoredMatch {
     pub(crate) fn new(candidate: Candidate, score: i64) -> Self {
         let sort_title = candidate.title.to_lowercase();
+        let search_title = sort_title.clone();
         Self {
             candidate,
             score,
             sort_title,
+            search_title,
+        }
+    }
+
+    pub(crate) fn new_with_search_title(
+        candidate: Candidate,
+        score: i64,
+        search_title: String,
+    ) -> Self {
+        let sort_title = candidate.title.to_lowercase();
+        Self {
+            candidate,
+            score,
+            sort_title,
+            search_title,
         }
     }
 }
@@ -198,6 +215,17 @@ pub(crate) fn finalize_top_k(heap: BinaryHeap<ScoredMatch>) -> Vec<(Candidate, i
     let mut out: Vec<(Candidate, i64)> = heap
         .into_iter()
         .map(|entry| (entry.candidate, entry.score))
+        .collect();
+    out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.title.cmp(&b.0.title)));
+    out
+}
+
+pub(crate) fn finalize_top_k_with_search(
+    heap: BinaryHeap<ScoredMatch>,
+) -> Vec<(Candidate, i64, String)> {
+    let mut out: Vec<(Candidate, i64, String)> = heap
+        .into_iter()
+        .map(|entry| (entry.candidate, entry.score, entry.search_title))
         .collect();
     out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.title.cmp(&b.0.title)));
     out
