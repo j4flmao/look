@@ -9,13 +9,17 @@ mod search;
 
 pub use action::{ActionKind, LaunchAction};
 use config::RuntimeConfig;
-use index::discover_candidates;
 use look_indexing::{Candidate, CandidateKind};
 use look_storage::{SearchSettings, SqliteStore, StorageError};
 use normalize::normalize_for_search;
 pub use result::{LaunchResult, LaunchResultAction};
 use std::collections::HashSet;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const INDEX_UPSERT_CHUNK_SIZE: usize = 512;
+const USAGE_RETENTION_DAYS: i64 = 90;
+const MAX_USAGE_EVENT_ROWS: usize = 50_000;
 
 struct IndexedCandidate {
     candidate: Candidate,
@@ -50,7 +54,7 @@ impl QueryEngine {
         if let Some(indexed) = self
             .candidates
             .iter_mut()
-            .find(|c| c.candidate.id == candidate_id)
+            .find(|c| c.candidate.id.as_ref() == candidate_id)
         {
             indexed.candidate.use_count = indexed.candidate.use_count.saturating_add(1);
             indexed.candidate.last_used_at_unix_s = Some(used_at_unix_s);
@@ -66,25 +70,25 @@ impl QueryEngine {
     pub fn demo_candidates() -> Vec<Candidate> {
         vec![
             Candidate::new(
-                "app.safari",
+                "app:safari",
                 CandidateKind::App,
                 "Safari",
                 "/Applications/Safari.app",
             ),
             Candidate::new(
-                "app.vscode",
+                "app:vscode",
                 CandidateKind::App,
                 "Visual Studio Code",
                 "/Applications/Visual Studio Code.app",
             ),
             Candidate::new(
-                "file.notes",
+                "file:notes",
                 CandidateKind::File,
                 "Notes.txt",
                 "/Users/user/Documents/Notes.txt",
             ),
             Candidate::new(
-                "folder.docs",
+                "folder:docs",
                 CandidateKind::Folder,
                 "Documents",
                 "/Users/user/Documents",
@@ -105,17 +109,49 @@ impl QueryEngine {
     pub fn bootstrap_sqlite(path: impl AsRef<Path>) -> Result<(), StorageError> {
         let mut store = SqliteStore::open(path)?;
         let runtime_config = RuntimeConfig::load();
-        let discovered_candidates = discover_candidates(&runtime_config);
-        if discovered_candidates.is_empty() {
-            return Ok(());
+        let run_started_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| StorageError::Data(format!("system time error: {err}")))?
+            .as_secs() as i64;
+        let existing = store.load_candidates(None)?;
+        let should_replace = looks_like_demo_seed(&existing);
+        if should_replace {
+            // Clear demo rows first, then progressively stream real candidates.
+            store.replace_candidates(&[])?;
         }
 
-        let existing = store.load_candidates(None)?;
-        if looks_like_demo_seed(&existing) {
-            store.replace_candidates(&discovered_candidates)?;
-        } else {
-            store.upsert_candidates(&discovered_candidates)?;
+        let (rx, producer_handle) = index::discover_candidates_stream(&runtime_config).into_parts();
+        let mut seen = HashSet::new();
+        let mut chunk = Vec::with_capacity(INDEX_UPSERT_CHUNK_SIZE);
+        let mut discovered_count = 0usize;
+        for candidate in rx {
+            if !seen.insert(candidate.id.clone()) {
+                continue;
+            }
+            discovered_count += 1;
+            chunk.push(candidate);
+            if chunk.len() >= INDEX_UPSERT_CHUNK_SIZE {
+                store.upsert_candidates_indexed(&chunk, Some(run_started_at))?;
+                chunk.clear();
+            }
         }
+
+        if !chunk.is_empty() {
+            store.upsert_candidates_indexed(&chunk, Some(run_started_at))?;
+        }
+
+        if let Err(err) = producer_handle.join() {
+            eprintln!("look index: producer worker panicked: {err:?}");
+        }
+
+        if discovered_count > 0 {
+            let _ = store.delete_stale_candidates(run_started_at)?;
+        }
+
+        let usage_cutoff = run_started_at.saturating_sub(USAGE_RETENTION_DAYS * 24 * 3600);
+        let _ = store.prune_usage_events_older_than(usage_cutoff)?;
+        let _ = store.prune_usage_events_to_max(MAX_USAGE_EVENT_ROWS)?;
+
         Ok(())
     }
 
@@ -157,8 +193,9 @@ fn looks_like_demo_seed(candidates: &[Candidate]) -> bool {
         return false;
     }
 
-    let ids: HashSet<&str> = candidates.iter().map(|c| c.id.as_str()).collect();
-    ids.contains("app.safari") && ids.contains("app.vscode")
+    let ids: HashSet<&str> = candidates.iter().map(|c| c.id.as_ref()).collect();
+    (ids.contains("app:safari") || ids.contains("app.safari"))
+        && (ids.contains("app:vscode") || ids.contains("app.vscode"))
 }
 
 #[cfg(test)]
@@ -169,25 +206,25 @@ mod tests {
     fn sample_engine() -> QueryEngine {
         QueryEngine::new(vec![
             Candidate::new(
-                "app.safari",
+                "app:safari",
                 CandidateKind::App,
                 "Safari",
                 "/Applications/Safari.app",
             ),
             Candidate::new(
-                "app.vscode",
+                "app:vscode",
                 CandidateKind::App,
                 "Visual Studio Code",
                 "/Applications/Visual Studio Code.app",
             ),
             Candidate::new(
-                "file.notes",
+                "file:notes",
                 CandidateKind::File,
                 "Notes.txt",
                 "/Users/test/Documents/Notes.txt",
             ),
             Candidate::new(
-                "folder.docs",
+                "folder:docs",
                 CandidateKind::Folder,
                 "Documents",
                 "/Users/test/Documents",
@@ -207,7 +244,7 @@ mod tests {
         assert!(
             results
                 .iter()
-                .any(|(candidate, _)| candidate.id == "app.safari")
+                .any(|(candidate, _)| candidate.id.as_ref() == "app:safari")
         );
     }
 
@@ -221,8 +258,8 @@ mod tests {
                 .all(|(candidate, _)| candidate.kind == CandidateKind::File)
         );
         assert_eq!(
-            results.first().map(|(candidate, _)| candidate.id.as_str()),
-            Some("file.notes")
+            results.first().map(|(candidate, _)| candidate.id.as_ref()),
+            Some("file:notes")
         );
     }
 
@@ -236,8 +273,8 @@ mod tests {
                 .all(|(candidate, _)| candidate.kind == CandidateKind::Folder)
         );
         assert_eq!(
-            results.first().map(|(candidate, _)| candidate.id.as_str()),
-            Some("folder.docs")
+            results.first().map(|(candidate, _)| candidate.id.as_ref()),
+            Some("folder:docs")
         );
     }
 
@@ -246,7 +283,7 @@ mod tests {
         let engine = sample_engine();
         let results = engine.search_scored("r\"^Visual.*Code$", 10);
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].0.id, "app.vscode");
+        assert_eq!(results[0].0.id.as_ref(), "app:vscode");
     }
 
     #[test]
@@ -259,7 +296,7 @@ mod tests {
     #[test]
     fn vietnamese_diacritics_query_matches_ascii_titles() {
         let engine = QueryEngine::new(vec![Candidate::new(
-            "app.terminal",
+            "app:terminal",
             CandidateKind::App,
             "Terminal",
             "/System/Applications/Utilities/Terminal.app",
@@ -267,7 +304,7 @@ mod tests {
 
         let results = engine.search_scored("tẻrminal", 10);
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].0.id, "app.terminal");
+        assert_eq!(results[0].0.id.as_ref(), "app:terminal");
     }
 
     #[test]
@@ -290,14 +327,14 @@ mod tests {
         less_used_app.use_count = 1;
 
         let folder = Candidate::new(
-            "folder.docs",
+            "folder:docs",
             CandidateKind::Folder,
             "Documents",
             "/Users/test/Documents",
         );
 
         let file = Candidate::new(
-            "file.notes",
+            "file:notes",
             CandidateKind::File,
             "Notes.txt",
             "/Users/test/Documents/Notes.txt",
@@ -307,14 +344,14 @@ mod tests {
         let results = engine.search_scored("", 4);
         let ordered_ids: Vec<&str> = results
             .iter()
-            .map(|(candidate, _)| candidate.id.as_str())
+            .map(|(candidate, _)| candidate.id.as_ref())
             .collect();
 
         assert_eq!(ordered_ids[0], "app.frequent");
         assert_eq!(ordered_ids[1], "app.less");
         assert!(
-            ordered_ids.iter().position(|id| *id == "folder.docs")
-                < ordered_ids.iter().position(|id| *id == "file.notes")
+            ordered_ids.iter().position(|id| *id == "folder:docs")
+                < ordered_ids.iter().position(|id| *id == "file:notes")
         );
     }
 
@@ -328,7 +365,7 @@ mod tests {
             "Display",
             "x-apple.systempreferences:com.apple.displays-settings.extension",
         );
-        display_setting.subtitle = Some("System Settings display monitor".to_string());
+        display_setting.subtitle = Some("System Settings display monitor".into());
         display_setting.use_count = 16;
         display_setting.last_used_at_unix_s = Some(now - 60 * 60 * 20);
 
@@ -349,7 +386,7 @@ mod tests {
         let engine = QueryEngine::new(vec![newly_opened_app, display_setting]);
         let results = engine.search_scored("", 10);
         assert_eq!(
-            results.first().map(|(candidate, _)| candidate.id.as_str()),
+            results.first().map(|(candidate, _)| candidate.id.as_ref()),
             Some("setting:com.apple.displays-settings.extension")
         );
     }
@@ -364,7 +401,7 @@ mod tests {
             "Display",
             "x-apple.systempreferences:com.apple.displays-settings.extension",
         );
-        display_setting.subtitle = Some("System Settings display monitor".to_string());
+        display_setting.subtitle = Some("System Settings display monitor".into());
         display_setting.use_count = 1;
         display_setting.last_used_at_unix_s = Some(now - 60 * 60 * 12);
 
@@ -385,7 +422,7 @@ mod tests {
         let engine = QueryEngine::new(vec![display_setting, newly_opened_app]);
         let results = engine.search_scored("", 10);
         assert_eq!(
-            results.first().map(|(candidate, _)| candidate.id.as_str()),
+            results.first().map(|(candidate, _)| candidate.id.as_ref()),
             Some("app.new")
         );
     }
@@ -409,7 +446,7 @@ mod tests {
 
         let results = engine.search_scored("git/books-pc", 10);
         assert!(!results.is_empty());
-        assert_eq!(results[0].0.id, "file.repo.readme");
+        assert_eq!(results[0].0.id.as_ref(), "file.repo.readme");
     }
 
     #[test]
@@ -420,9 +457,8 @@ mod tests {
             "Network",
             "x-apple.systempreferences:com.apple.preference.network",
         );
-        settings.subtitle = Some(
-            "System Settings settings network ethernet dns proxy vpn notifications".to_string(),
-        );
+        settings.subtitle =
+            Some("System Settings settings network ethernet dns proxy vpn notifications".into());
 
         let file = Candidate::new(
             "file.concurrency",
@@ -434,7 +470,7 @@ mod tests {
         let engine = QueryEngine::new(vec![settings, file]);
         let results = engine.search_scored("ingo", 10);
         assert_eq!(
-            results.first().map(|(candidate, _)| candidate.id.as_str()),
+            results.first().map(|(candidate, _)| candidate.id.as_ref()),
             Some("file.concurrency")
         );
     }
@@ -447,7 +483,7 @@ mod tests {
             "General",
             "x-apple.systempreferences:com.apple.preference.general",
         );
-        settings_app.subtitle = Some("System Settings settings general".to_string());
+        settings_app.subtitle = Some("System Settings settings general".into());
 
         let settings_folder = Candidate::new(
             "folder.settings",
@@ -459,7 +495,7 @@ mod tests {
         let engine = QueryEngine::new(vec![settings_folder, settings_app]);
         let results = engine.search_scored("sett", 10);
         assert_eq!(
-            results.first().map(|(candidate, _)| candidate.id.as_str()),
+            results.first().map(|(candidate, _)| candidate.id.as_ref()),
             Some("setting:general")
         );
     }

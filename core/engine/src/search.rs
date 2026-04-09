@@ -1,10 +1,11 @@
 use crate::QueryEngine;
 use crate::config::*;
+use crate::normalize::normalize_for_search;
 use crate::query::ParsedQuery;
 use crate::scoring::{
     ScoredMatch, contains_match_score, default_browse_score, finalize_top_k,
-    finalize_top_k_with_search, is_system_settings_candidate, kind_bias, looks_like_settings_query,
-    path_depth_penalty, path_match_score, push_top_k, query_kind_penalty,
+    is_system_settings_candidate, kind_bias, looks_like_settings_query, path_depth_penalty,
+    path_match_score, push_top_k, query_kind_penalty,
 };
 use look_indexing::{Candidate, CandidateKind};
 use look_matching::{fuzzy_quality_bonus_prepared, fuzzy_score_prepared, prepare_query};
@@ -18,15 +19,9 @@ const RERANK_TOP_N: usize = 80;
 const RERANK_MIN_QUERY_CHARS: usize = 3;
 const REGEX_SIZE_LIMIT_BYTES: usize = 1024 * 1024;
 
-fn strip_search_titles(
-    mut ranked: Vec<(Candidate, i64, String)>,
-    limit: usize,
-) -> Vec<(Candidate, i64)> {
+fn top_limit(mut ranked: Vec<(Candidate, i64)>, limit: usize) -> Vec<(Candidate, i64)> {
     ranked.truncate(limit);
     ranked
-        .into_iter()
-        .map(|(candidate, score, _)| (candidate, score))
-        .collect()
 }
 
 impl QueryEngine {
@@ -176,19 +171,15 @@ impl QueryEngine {
                 + path_depth_penalty(&candidate.candidate);
             push_top_k(
                 &mut top,
-                ScoredMatch::new_with_search_title(
-                    candidate.candidate.clone(),
-                    final_score,
-                    candidate.title_search.clone(),
-                ),
+                ScoredMatch::new(candidate.candidate.clone(), final_score),
                 pool_limit,
             );
         }
 
-        let mut ranked = finalize_top_k_with_search(top);
+        let mut ranked = finalize_top_k(top);
 
         if normalized_query.chars().count() < RERANK_MIN_QUERY_CHARS {
-            return strip_search_titles(ranked, limit);
+            return top_limit(ranked, limit);
         }
 
         // Two-stage retrieval:
@@ -196,11 +187,12 @@ impl QueryEngine {
         // 2) quality rerank only on top-N candidates to keep latency predictable
         let rerank_count = ranked.len().min(RERANK_TOP_N);
         for entry in ranked.iter_mut().take(rerank_count) {
-            entry.1 += fuzzy_quality_bonus_prepared(&prepared_query, &entry.2);
+            let rerank_title = normalize_for_search(&entry.0.title);
+            entry.1 += fuzzy_quality_bonus_prepared(&prepared_query, &rerank_title);
         }
 
         ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.title.cmp(&b.0.title)));
-        strip_search_titles(ranked, limit)
+        top_limit(ranked, limit)
     }
 
     pub fn search_scored(&self, query: &str, limit: usize) -> Vec<(Candidate, i64)> {

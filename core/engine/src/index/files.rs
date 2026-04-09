@@ -1,69 +1,53 @@
 use crate::config::RuntimeConfig;
 use crate::index::{FILE_CANDIDATE_ID_PREFIX, FOLDER_CANDIDATE_ID_PREFIX};
+use ignore::WalkBuilder;
 use look_indexing::{Candidate, CandidateKind};
-use std::collections::HashSet;
-use std::fs;
+use std::sync::mpsc;
 
-pub fn discover_local_files_and_folders(
-    config: &RuntimeConfig,
-    seen: &mut HashSet<String>,
-    out: &mut Vec<Candidate>,
-) {
+pub fn discover_local_files_and_folders(config: &RuntimeConfig, tx: mpsc::SyncSender<Candidate>) {
     let roots = &config.file_scan_roots;
 
     let mut file_count = 0usize;
     for root in roots {
-        walk_files(
-            root,
-            config.file_scan_depth,
-            seen,
-            out,
-            &mut file_count,
-            config.file_scan_limit,
-            &config.file_exclude_paths,
-            &config.skip_dir_names,
-        );
+        walk_files(root, config, &tx, &mut file_count);
+        if file_count >= config.file_scan_limit {
+            break;
+        }
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn walk_files(
     path: &str,
-    depth: usize,
-    seen: &mut HashSet<String>,
-    out: &mut Vec<Candidate>,
+    config: &RuntimeConfig,
+    tx: &mpsc::SyncSender<Candidate>,
     file_count: &mut usize,
-    file_limit: usize,
-    file_exclude_paths: &[String],
-    skip_dir_names: &[String],
 ) {
-    if should_exclude_path(path, file_exclude_paths) {
+    if should_exclude_path(path, &config.file_exclude_paths) {
         return;
     }
 
-    if depth == 0 || *file_count >= file_limit {
-        return;
-    }
+    let mut walker = WalkBuilder::new(path);
+    walker
+        .hidden(false)
+        .git_ignore(false)
+        .git_global(false)
+        .git_exclude(false)
+        .parents(false)
+        .max_depth(Some(config.file_scan_depth));
 
-    let Ok(entries) = fs::read_dir(path) else {
-        return;
-    };
-
-    for entry in entries.flatten() {
-        if *file_count >= file_limit {
-            return;
+    for entry in walker.build().flatten() {
+        if *file_count >= config.file_scan_limit {
+            break;
         }
 
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        let path_buf = entry.path();
+        let path_buf = entry.into_path();
         let Some(path_str) = path_buf.to_str() else {
             continue;
         };
-        if should_exclude_path(path_str, file_exclude_paths) {
+        if path_str == path || should_exclude_path(path_str, &config.file_exclude_paths) {
             continue;
         }
+
         let Some(name) = path_buf.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
@@ -71,37 +55,23 @@ fn walk_files(
             continue;
         }
 
-        if file_type.is_dir() {
-            if !name.ends_with(".app") {
-                if should_skip_dir(name, skip_dir_names) {
-                    continue;
-                }
-
-                let key = format!("{FOLDER_CANDIDATE_ID_PREFIX}{}", path_str.to_lowercase());
-                if seen.insert(key.clone()) {
-                    let mut c = Candidate::new(&key, CandidateKind::Folder, name, path_str);
-                    c.subtitle = Some(CandidateKind::Folder.as_str().to_string());
-                    out.push(c);
-                }
-                walk_files(
-                    path_str,
-                    depth - 1,
-                    seen,
-                    out,
-                    file_count,
-                    file_limit,
-                    file_exclude_paths,
-                    skip_dir_names,
-                );
+        if path_buf.is_dir() {
+            if name.ends_with(".app") || should_skip_dir(name, &config.skip_dir_names) {
+                continue;
             }
-        } else if file_type.is_file() {
+            let key = format!("{FOLDER_CANDIDATE_ID_PREFIX}{}", path_str.to_lowercase());
+            let mut candidate = Candidate::new(&key, CandidateKind::Folder, name, path_str);
+            candidate.subtitle = Some(CandidateKind::Folder.as_str().into());
+            let _ = tx.send(candidate);
+            continue;
+        }
+
+        if path_buf.is_file() {
             *file_count += 1;
             let key = format!("{FILE_CANDIDATE_ID_PREFIX}{}", path_str.to_lowercase());
-            if seen.insert(key.clone()) {
-                let mut c = Candidate::new(&key, CandidateKind::File, name, path_str);
-                c.subtitle = Some(CandidateKind::File.as_str().to_string());
-                out.push(c);
-            }
+            let mut candidate = Candidate::new(&key, CandidateKind::File, name, path_str);
+            candidate.subtitle = Some(CandidateKind::File.as_str().into());
+            let _ = tx.send(candidate);
         }
     }
 }

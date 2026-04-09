@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+use std::sync::mpsc;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CandidateKind {
@@ -128,11 +129,11 @@ impl fmt::Display for CandidateKind {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Candidate {
-    pub id: String,
+    pub id: Box<str>,
     pub kind: CandidateKind,
-    pub title: String,
-    pub subtitle: Option<String>,
-    pub path: String,
+    pub title: Box<str>,
+    pub subtitle: Option<Box<str>>,
+    pub path: Box<str>,
     pub use_count: u64,
     pub last_used_at_unix_s: Option<i64>,
 }
@@ -140,11 +141,11 @@ pub struct Candidate {
 impl Candidate {
     pub fn new(id: &str, kind: CandidateKind, title: &str, path: &str) -> Self {
         Self {
-            id: id.to_string(),
+            id: id.into(),
             kind,
-            title: title.to_string(),
-            subtitle: Some(path.to_string()),
-            path: path.to_string(),
+            title: title.into(),
+            subtitle: Some(path.into()),
+            path: path.into(),
             use_count: 0,
             last_used_at_unix_s: None,
         }
@@ -152,5 +153,11 @@ impl Candidate {
 }
 
 pub trait Source {
-    fn collect(&self) -> Vec<Candidate>;
+    fn collect(&self, tx: mpsc::SyncSender<Candidate>);
+
+    fn collect_vec(&self) -> Vec<Candidate> {
+        let (tx, rx) = mpsc::sync_channel(1024);
+        self.collect(tx);
+        rx.into_iter().collect()
+    }
 }

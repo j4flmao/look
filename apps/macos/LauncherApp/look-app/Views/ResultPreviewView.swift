@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ResultPreviewView: View {
     @EnvironmentObject private var themeStore: ThemeStore
@@ -33,7 +34,7 @@ struct ResultPreviewView: View {
     private var clipboardIcon: NSImage {
         NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
             ?? NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)
-            ?? NSWorkspace.shared.icon(forFileType: "txt")
+            ?? NSWorkspace.shared.icon(for: .plainText)
     }
 
     private var largeIcon: NSImage {

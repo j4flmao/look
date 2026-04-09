@@ -187,11 +187,11 @@ impl SqliteStore {
             let kind_raw: String = row.get(1)?;
             let use_count_raw: i64 = row.get(5)?;
             out.push(Candidate {
-                id: row.get(0)?,
+                id: row.get::<_, String>(0)?.into_boxed_str(),
                 kind: parse_kind(&kind_raw)?,
-                title: row.get(2)?,
-                subtitle: row.get(3)?,
-                path: row.get(4)?,
+                title: row.get::<_, String>(2)?.into_boxed_str(),
+                subtitle: row.get::<_, Option<String>>(3)?.map(String::into_boxed_str),
+                path: row.get::<_, String>(4)?.into_boxed_str(),
                 use_count: to_use_count(use_count_raw)?,
                 last_used_at_unix_s: row.get(6)?,
             });
@@ -201,28 +201,38 @@ impl SqliteStore {
     }
 
     pub fn upsert_candidates(&mut self, candidates: &[Candidate]) -> StorageResult<()> {
+        self.upsert_candidates_indexed(candidates, Some(current_unix_s()?))
+    }
+
+    pub fn upsert_candidates_indexed(
+        &mut self,
+        candidates: &[Candidate],
+        indexed_at_unix_s: Option<i64>,
+    ) -> StorageResult<()> {
         let tx = self.conn.transaction()?;
         {
             let mut stmt = tx.prepare(
-                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s, indexed_at_unix_s)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                  ON CONFLICT(id) DO UPDATE SET
                    kind = excluded.kind,
                    title = excluded.title,
                    subtitle = excluded.subtitle,
-                    path = excluded.path",
+                     path = excluded.path,
+                    indexed_at_unix_s = excluded.indexed_at_unix_s",
             )?;
 
             for candidate in candidates {
                 let use_count = from_use_count(candidate.use_count)?;
                 stmt.execute(params![
-                    candidate.id,
+                    candidate.id.as_ref(),
                     kind_key(&candidate.kind),
-                    candidate.title,
-                    candidate.subtitle,
-                    candidate.path,
+                    candidate.title.as_ref(),
+                    candidate.subtitle.as_deref(),
+                    candidate.path.as_ref(),
                     use_count,
                     candidate.last_used_at_unix_s,
+                    indexed_at_unix_s,
                 ])?;
             }
         }
@@ -237,20 +247,21 @@ impl SqliteStore {
 
         {
             let mut stmt = tx.prepare(
-                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s, indexed_at_unix_s)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             )?;
 
             for candidate in candidates {
                 let use_count = from_use_count(candidate.use_count)?;
                 stmt.execute(params![
-                    candidate.id,
+                    candidate.id.as_ref(),
                     kind_key(&candidate.kind),
-                    candidate.title,
-                    candidate.subtitle,
-                    candidate.path,
+                    candidate.title.as_ref(),
+                    candidate.subtitle.as_deref(),
+                    candidate.path.as_ref(),
                     use_count,
                     candidate.last_used_at_unix_s,
+                    None::<i64>,
                 ])?;
             }
         }
@@ -327,6 +338,53 @@ impl SqliteStore {
         Ok(())
     }
 
+    pub fn delete_stale_candidates(&mut self, older_than_unix_s: i64) -> StorageResult<usize> {
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "DELETE FROM usage_events
+             WHERE candidate_id IN (
+               SELECT id FROM candidates
+               WHERE indexed_at_unix_s IS NULL OR indexed_at_unix_s < ?1
+             )",
+            params![older_than_unix_s],
+        )?;
+        let removed = tx.execute(
+            "DELETE FROM candidates
+             WHERE indexed_at_unix_s IS NULL OR indexed_at_unix_s < ?1",
+            params![older_than_unix_s],
+        )?;
+        tx.commit()?;
+        Ok(removed)
+    }
+
+    pub fn prune_usage_events_older_than(&mut self, cutoff_unix_s: i64) -> StorageResult<usize> {
+        let removed = self.conn.execute(
+            "DELETE FROM usage_events WHERE used_at_unix_s < ?1",
+            params![cutoff_unix_s],
+        )?;
+        Ok(removed)
+    }
+
+    pub fn prune_usage_events_to_max(&mut self, max_rows: usize) -> StorageResult<usize> {
+        let total: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM usage_events", [], |row| row.get(0))?;
+        let total = total.max(0) as usize;
+        if total <= max_rows {
+            return Ok(0);
+        }
+
+        let overflow = total - max_rows;
+        let removed = self.conn.execute(
+            "DELETE FROM usage_events
+             WHERE id IN (
+               SELECT id FROM usage_events ORDER BY used_at_unix_s ASC, id ASC LIMIT ?1
+             )",
+            params![overflow as i64],
+        )?;
+        Ok(removed)
+    }
+
     fn migrate(&self) -> StorageResult<()> {
         self.conn.execute_batch(
             "PRAGMA foreign_keys = ON;
@@ -344,8 +402,9 @@ impl SqliteStore {
                  subtitle TEXT,
                  path TEXT NOT NULL,
                  use_count INTEGER NOT NULL DEFAULT 0,
-                 last_used_at_unix_s INTEGER
-             );
+                 last_used_at_unix_s INTEGER,
+                 indexed_at_unix_s INTEGER
+              );
 
              CREATE INDEX IF NOT EXISTS idx_candidates_title ON candidates(title);
              CREATE INDEX IF NOT EXISTS idx_candidates_kind ON candidates(kind);
@@ -358,14 +417,49 @@ impl SqliteStore {
                  FOREIGN KEY(candidate_id) REFERENCES candidates(id)
              );
 
-             CREATE TABLE IF NOT EXISTS index_state (
-                 source TEXT PRIMARY KEY,
-                 last_indexed_at_unix_s INTEGER NOT NULL
-             );",
+              CREATE TABLE IF NOT EXISTS index_state (
+                  source TEXT PRIMARY KEY,
+                  last_indexed_at_unix_s INTEGER NOT NULL
+              );",
+        )?;
+
+        ensure_column_exists(&self.conn, "candidates", "indexed_at_unix_s", "INTEGER")?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_candidates_indexed_at ON candidates(indexed_at_unix_s)",
+            [],
         )?;
 
         Ok(())
     }
+}
+
+fn ensure_column_exists(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    column_type: &str,
+) -> StorageResult<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        if name == column {
+            return Ok(());
+        }
+    }
+
+    conn.execute(
+        &format!("ALTER TABLE {table} ADD COLUMN {column} {column_type}"),
+        [],
+    )?;
+    Ok(())
+}
+
+fn current_unix_s() -> StorageResult<i64> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| StorageError::Data(format!("system time error: {err}")))
+        .map(|d| d.as_secs() as i64)
 }
 
 fn to_use_count(value: i64) -> StorageResult<u64> {
@@ -425,11 +519,11 @@ mod tests {
 
     fn candidate(id: &str, title: &str, path: &str) -> Candidate {
         Candidate {
-            id: id.to_string(),
+            id: id.into(),
             kind: CandidateKind::App,
-            title: title.to_string(),
-            subtitle: Some("test subtitle".to_string()),
-            path: path.to_string(),
+            title: title.into(),
+            subtitle: Some("test subtitle".into()),
+            path: path.into(),
             use_count: 0,
             last_used_at_unix_s: None,
         }
@@ -491,9 +585,9 @@ mod tests {
 
         let loaded = store.load_candidates(None).expect("load candidates");
         assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].id, "app:test");
-        assert_eq!(loaded[0].title, "Test App");
-        assert_eq!(loaded[0].path, "/Applications/Test.app");
+        assert_eq!(loaded[0].id.as_ref(), "app:test");
+        assert_eq!(loaded[0].title.as_ref(), "Test App");
+        assert_eq!(loaded[0].path.as_ref(), "/Applications/Test.app");
         assert_eq!(loaded[0].use_count, 0);
         assert_eq!(loaded[0].last_used_at_unix_s, None);
     }
@@ -516,11 +610,11 @@ mod tests {
         assert!(after_usage[0].last_used_at_unix_s.is_some());
 
         let updated = Candidate {
-            id: "app:test".to_string(),
+            id: "app:test".into(),
             kind: CandidateKind::App,
-            title: "Renamed App".to_string(),
-            subtitle: Some("updated subtitle".to_string()),
-            path: "/Applications/Renamed.app".to_string(),
+            title: "Renamed App".into(),
+            subtitle: Some("updated subtitle".into()),
+            path: "/Applications/Renamed.app".into(),
             use_count: 0,
             last_used_at_unix_s: None,
         };
@@ -531,8 +625,8 @@ mod tests {
 
         let final_rows = store.load_candidates(None).expect("load final candidates");
         assert_eq!(final_rows.len(), 1);
-        assert_eq!(final_rows[0].title, "Renamed App");
-        assert_eq!(final_rows[0].path, "/Applications/Renamed.app");
+        assert_eq!(final_rows[0].title.as_ref(), "Renamed App");
+        assert_eq!(final_rows[0].path.as_ref(), "/Applications/Renamed.app");
         assert_eq!(final_rows[0].use_count, 1);
         assert!(final_rows[0].last_used_at_unix_s.is_some());
 
@@ -541,5 +635,90 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM usage_events", [], |row| row.get(0))
             .expect("count usage events");
         assert_eq!(usage_count, 1);
+    }
+
+    #[test]
+    fn delete_stale_candidates_removes_older_rows() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let old = candidate("app:old", "Old", "/Applications/Old.app");
+        let fresh = candidate("app:fresh", "Fresh", "/Applications/Fresh.app");
+
+        store
+            .upsert_candidates_indexed(&[old], Some(100))
+            .expect("insert old");
+        store
+            .upsert_candidates_indexed(&[fresh], Some(200))
+            .expect("insert fresh");
+
+        let removed = store
+            .delete_stale_candidates(150)
+            .expect("delete stale candidates");
+        assert_eq!(removed, 1);
+
+        let loaded = store.load_candidates(None).expect("load candidates");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].id.as_ref(), "app:fresh");
+    }
+
+    #[test]
+    fn delete_stale_candidates_also_cleans_null_indexed_rows() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let old_style = candidate("app:null", "Null Indexed", "/Applications/Null.app");
+        store
+            .upsert_candidates_indexed(&[old_style], None)
+            .expect("insert null-indexed row");
+
+        let removed = store
+            .delete_stale_candidates(1)
+            .expect("delete stale including null");
+        assert_eq!(removed, 1);
+
+        let loaded = store.load_candidates(None).expect("load candidates");
+        assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn prune_usage_events_applies_age_and_count_limits() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let first = candidate("app:test", "Test App", "/Applications/Test.app");
+        store.upsert_candidates(&[first]).expect("insert candidate");
+
+        store
+            .conn
+            .execute(
+                "INSERT INTO usage_events(candidate_id, action, used_at_unix_s) VALUES (?1, ?2, ?3)",
+                params!["app:test", "open", 100_i64],
+            )
+            .expect("insert old usage");
+        store
+            .conn
+            .execute(
+                "INSERT INTO usage_events(candidate_id, action, used_at_unix_s) VALUES (?1, ?2, ?3)",
+                params!["app:test", "open", 200_i64],
+            )
+            .expect("insert usage 2");
+        store
+            .conn
+            .execute(
+                "INSERT INTO usage_events(candidate_id, action, used_at_unix_s) VALUES (?1, ?2, ?3)",
+                params!["app:test", "open", 300_i64],
+            )
+            .expect("insert usage 3");
+
+        let removed_old = store
+            .prune_usage_events_older_than(150)
+            .expect("prune old usage");
+        assert_eq!(removed_old, 1);
+
+        let removed_overflow = store
+            .prune_usage_events_to_max(1)
+            .expect("prune usage overflow");
+        assert_eq!(removed_overflow, 1);
+
+        let remaining: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM usage_events", [], |row| row.get(0))
+            .expect("count remaining usage");
+        assert_eq!(remaining, 1);
     }
 }

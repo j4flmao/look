@@ -182,13 +182,11 @@ fn browse_recency_boost(age_hours: i64) -> i64 {
 pub(crate) struct ScoredMatch {
     candidate: Candidate,
     score: i64,
-    sort_title: String,
-    search_title: String,
 }
 
 impl PartialEq for ScoredMatch {
     fn eq(&self, other: &Self) -> bool {
-        self.score == other.score && self.sort_title == other.sort_title
+        self.score == other.score && self.candidate.title == other.candidate.title
     }
 }
 
@@ -196,28 +194,7 @@ impl Eq for ScoredMatch {}
 
 impl ScoredMatch {
     pub(crate) fn new(candidate: Candidate, score: i64) -> Self {
-        let sort_title = candidate.title.to_lowercase();
-        let search_title = sort_title.clone();
-        Self {
-            candidate,
-            score,
-            sort_title,
-            search_title,
-        }
-    }
-
-    pub(crate) fn new_with_search_title(
-        candidate: Candidate,
-        score: i64,
-        search_title: String,
-    ) -> Self {
-        let sort_title = candidate.title.to_lowercase();
-        Self {
-            candidate,
-            score,
-            sort_title,
-            search_title,
-        }
+        Self { candidate, score }
     }
 }
 
@@ -226,7 +203,7 @@ impl Ord for ScoredMatch {
         match self.score.cmp(&other.score) {
             Ordering::Less => Ordering::Greater,
             Ordering::Greater => Ordering::Less,
-            Ordering::Equal => self.sort_title.cmp(&other.sort_title),
+            Ordering::Equal => self.candidate.title.cmp(&other.candidate.title),
         }
     }
 }
@@ -255,17 +232,6 @@ pub(crate) fn finalize_top_k(heap: BinaryHeap<ScoredMatch>) -> Vec<(Candidate, i
     let mut out: Vec<(Candidate, i64)> = heap
         .into_iter()
         .map(|entry| (entry.candidate, entry.score))
-        .collect();
-    out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.title.cmp(&b.0.title)));
-    out
-}
-
-pub(crate) fn finalize_top_k_with_search(
-    heap: BinaryHeap<ScoredMatch>,
-) -> Vec<(Candidate, i64, String)> {
-    let mut out: Vec<(Candidate, i64, String)> = heap
-        .into_iter()
-        .map(|entry| (entry.candidate, entry.score, entry.search_title))
         .collect();
     out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.title.cmp(&b.0.title)));
     out
@@ -398,11 +364,11 @@ mod tests {
     #[test]
     fn query_kind_penalty_settings_hints() {
         let settings_app = Candidate {
-            id: "app.settings".to_string(),
+            id: "app:settings".into(),
             kind: CandidateKind::App,
-            title: "System Settings".to_string(),
-            subtitle: Some("System Settings".to_string()),
-            path: "/System/Applications/System Settings.app".to_string(),
+            title: "System Settings".into(),
+            subtitle: Some("System Settings".into()),
+            path: "/System/Applications/System Settings.app".into(),
             use_count: 0,
             last_used_at_unix_s: None,
         };
@@ -420,11 +386,11 @@ mod tests {
     #[test]
     fn query_kind_penalty_demotes_settings_for_non_settings_queries() {
         let settings_app = Candidate {
-            id: "setting:network".to_string(),
+            id: "setting:network".into(),
             kind: CandidateKind::App,
-            title: "Network".to_string(),
-            subtitle: Some("System Settings network".to_string()),
-            path: "x-apple.systempreferences:com.apple.preference.network".to_string(),
+            title: "Network".into(),
+            subtitle: Some("System Settings network".into()),
+            path: "x-apple.systempreferences:com.apple.preference.network".into(),
             use_count: 0,
             last_used_at_unix_s: None,
         };
