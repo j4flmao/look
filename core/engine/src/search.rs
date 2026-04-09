@@ -3,8 +3,8 @@ use crate::config::*;
 use crate::query::ParsedQuery;
 use crate::scoring::{
     ScoredMatch, contains_match_score, default_browse_score, finalize_top_k,
-    finalize_top_k_with_search, kind_bias, path_depth_penalty, path_match_score, push_top_k,
-    query_kind_penalty,
+    finalize_top_k_with_search, is_system_settings_candidate, kind_bias, looks_like_settings_query,
+    path_depth_penalty, path_match_score, push_top_k, query_kind_penalty,
 };
 use look_indexing::{Candidate, CandidateKind};
 use look_matching::{fuzzy_quality_bonus_prepared, fuzzy_score_prepared, prepare_query};
@@ -128,6 +128,7 @@ impl QueryEngine {
         let prepared_query = prepare_query(normalized_query);
         let mut top = BinaryHeap::new();
         let has_path_hint = normalized_query.contains('/');
+        let settings_query = looks_like_settings_query(normalized_query);
         let pool_limit = (limit.saturating_mul(RERANK_POOL_MULTIPLIER)).max(RERANK_TOP_N);
 
         for candidate in self
@@ -138,7 +139,12 @@ impl QueryEngine {
             // Use precomputed normalized strings from IndexedCandidate.
             // This avoids normalize_for_search allocations in the hot loop.
             let title_score = fuzzy_score_prepared(&prepared_query, &candidate.title_search);
-            let subtitle_search = candidate.subtitle_search.as_deref();
+            let subtitle_search =
+                if !settings_query && is_system_settings_candidate(&candidate.candidate) {
+                    None
+                } else {
+                    candidate.subtitle_search.as_deref()
+                };
             let subtitle_score = subtitle_search
                 .as_ref()
                 .and_then(|subtitle| fuzzy_score_prepared(&prepared_query, subtitle))
