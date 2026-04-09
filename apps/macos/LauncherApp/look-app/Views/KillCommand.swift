@@ -87,7 +87,7 @@ struct KillCommandView: View {
             .padding(2)
         }
 
-        if let (app, num) = pendingApp {
+        if let (app, _) = pendingApp {
             Spacer(minLength: 8)
             HStack(spacing: 12) {
                 Image(nsImage: app.icon ?? NSImage())

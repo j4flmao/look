@@ -1,18 +1,14 @@
 use crate::config::RuntimeConfig;
 use crate::index::APP_CANDIDATE_ID_PREFIX;
 use look_indexing::{Candidate, CandidateKind};
-use std::collections::HashSet;
 use std::env;
 use std::fs;
+use std::sync::mpsc;
 
 const FINDER_EMBEDDED_APPS_ROOT: &str =
     "/System/Library/CoreServices/Finder.app/Contents/Applications";
 
-pub fn discover_installed_apps(
-    config: &RuntimeConfig,
-    seen: &mut HashSet<String>,
-    out: &mut Vec<Candidate>,
-) {
+pub fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSender<Candidate>) {
     let mut roots = config.app_scan_roots.clone();
     if let Ok(home) = env::var("HOME") {
         let home_apps = format!("{home}/Applications");
@@ -29,8 +25,7 @@ pub fn discover_installed_apps(
         walk_apps(
             &root,
             config.app_scan_depth,
-            seen,
-            out,
+            &tx,
             &config.app_exclude_paths,
             &config.app_exclude_names,
         );
@@ -40,8 +35,7 @@ pub fn discover_installed_apps(
 fn walk_apps(
     path: &str,
     depth: usize,
-    seen: &mut HashSet<String>,
-    out: &mut Vec<Candidate>,
+    tx: &mpsc::SyncSender<Candidate>,
     app_exclude_paths: &[String],
     app_exclude_names: &[String],
 ) {
@@ -84,20 +78,17 @@ fn walk_apps(
             }
 
             let key = format!("{APP_CANDIDATE_ID_PREFIX}{}", app_path_str.to_lowercase());
-            if seen.insert(key.clone()) {
-                out.push(Candidate::new(
-                    &key,
-                    CandidateKind::App,
-                    &title,
-                    app_path_str,
-                ));
-            }
+            let _ = tx.send(Candidate::new(
+                &key,
+                CandidateKind::App,
+                &title,
+                app_path_str,
+            ));
         } else {
             walk_apps(
                 app_path_str,
                 depth - 1,
-                seen,
-                out,
+                tx,
                 app_exclude_paths,
                 app_exclude_names,
             );

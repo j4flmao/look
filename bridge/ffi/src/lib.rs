@@ -21,6 +21,11 @@ pub extern "C" fn look_search_json(query: *const c_char, limit: u32) -> *mut c_c
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn look_search_json_compact(query: *const c_char, limit: u32) -> *mut c_char {
+    search_api::look_search_json_compact_impl(query, limit)
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn look_record_usage(candidate_id: *const c_char, action: *const c_char) -> bool {
     usage_api::look_record_usage_impl(candidate_id, action)
 }
@@ -73,11 +78,11 @@ mod tests {
 
         let mut store = SqliteStore::open(&db_path).expect("open sqlite store");
         let candidate = Candidate {
-            id: "app:smoke.test".to_string(),
+            id: "app:smoke.test".into(),
             kind: CandidateKind::App,
-            title: "Smoke Test App".to_string(),
-            subtitle: Some("smoke app".to_string()),
-            path: "/Applications/Smoke Test App.app".to_string(),
+            title: "Smoke Test App".into(),
+            subtitle: Some("smoke app".into()),
+            path: "/Applications/Smoke Test App.app".into(),
             use_count: 0,
             last_used_at_unix_s: None,
         };
@@ -117,6 +122,17 @@ mod tests {
             });
         assert!(has_smoke);
 
+        let compact_ptr = look_search_json_compact(query.as_ptr(), 10);
+        assert!(!compact_ptr.is_null());
+        let compact_raw = unsafe { CStr::from_ptr(compact_ptr) }
+            .to_string_lossy()
+            .into_owned();
+        look_free_cstring(compact_ptr);
+        let compact_payload: serde_json::Value =
+            serde_json::from_str(&compact_raw).expect("valid compact payload");
+        assert!(compact_payload.get("query").is_none());
+        assert!(compact_payload.get("results").is_some());
+
         let id = CString::new("app:smoke.test").expect("id cstring");
         let action = CString::new("open").expect("action cstring");
         assert!(look_record_usage(id.as_ptr(), action.as_ptr()));
@@ -130,7 +146,7 @@ mod tests {
             .expect("load candidates after usage");
         let updated = loaded
             .iter()
-            .find(|candidate| candidate.id == "app:smoke.test")
+            .find(|candidate| candidate.id.as_ref() == "app:smoke.test")
             .expect("smoke candidate exists");
         assert_eq!(updated.use_count, 1);
         assert!(updated.last_used_at_unix_s.is_some());

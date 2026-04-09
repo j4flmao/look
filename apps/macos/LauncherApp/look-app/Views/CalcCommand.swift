@@ -85,7 +85,7 @@ struct CalcCommand {
     }
 
     private static func normalizeExpression(_ expression: String) -> String {
-        var normalized = expression
+        let normalized = expression
             .replacingOccurrences(of: "x", with: "*")
             .replacingOccurrences(of: "X", with: "*")
             .replacingOccurrences(of: ":", with: "/")

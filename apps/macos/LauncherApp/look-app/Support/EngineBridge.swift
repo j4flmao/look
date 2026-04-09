@@ -4,6 +4,10 @@ import Foundation
 nonisolated
 private func look_search_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_search_json_compact")
+nonisolated
+private func look_search_json_compact(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_record_usage")
 nonisolated
 private func look_record_usage(_ candidateID: UnsafePointer<CChar>?, _ action: UnsafePointer<CChar>?) -> Bool
@@ -27,7 +31,7 @@ final class EngineBridge {
 
     nonisolated func search(query: String, limit: Int = 40) -> [LauncherResult] {
         let ptr = query.withCString { cstr in
-            look_search_json(cstr, UInt32(limit))
+            look_search_json_compact(cstr, UInt32(limit))
         }
 
         guard let ptr else {
@@ -39,24 +43,38 @@ final class EngineBridge {
         }
 
         let raw = String(cString: ptr)
-        guard let data = raw.data(using: .utf8),
-            let payload = try? JSONDecoder().decode(SearchPayload.self, from: data)
+        guard let data = raw.data(using: .utf8) else {
+            return fallbackResults()
+        }
+
+        if let compactPayload = try? JSONDecoder().decode(CompactSearchPayload.self, from: data) {
+            return compactPayload.results.map { item in
+                LauncherResult(
+                    id: item.id,
+                    kind: LauncherResultKind(rawValue: item.kind) ?? .app,
+                    title: item.title,
+                    subtitle: item.subtitle,
+                    path: item.path,
+                    score: item.score
+                )
+            }
+        }
+
+        // Compatibility fallback for older JSON payload shape.
+        guard let fullPayload = try? JSONDecoder().decode(SearchPayload.self, from: data),
+            fullPayload.error == nil
         else {
             return fallbackResults()
         }
 
-        if payload.error != nil {
-            return fallbackResults()
-        }
-
-        return payload.results.map {
+        return fullPayload.results.map { item in
             LauncherResult(
-                id: $0.id,
-                kind: LauncherResultKind(rawValue: $0.kind) ?? .app,
-                title: $0.title,
-                subtitle: $0.subtitle,
-                path: $0.path,
-                score: $0.score
+                id: item.id,
+                kind: LauncherResultKind(rawValue: item.kind) ?? .app,
+                title: item.title,
+                subtitle: item.subtitle,
+                path: item.path,
+                score: item.score
             )
         }
     }
@@ -101,7 +119,7 @@ final class EngineBridge {
     }
 }
 
-struct TranslationResult: Decodable {
+nonisolated struct TranslationResult: Decodable {
     let original: String
     let translated: String
     let error: BridgeError?
@@ -114,7 +132,12 @@ private nonisolated struct SearchPayload: Decodable {
     let error: BridgeError?
 }
 
-struct BridgeError: Decodable {
+private nonisolated struct CompactSearchPayload: Decodable {
+    let count: Int
+    let results: [SearchItem]
+}
+
+nonisolated struct BridgeError: Decodable {
     let code: String
     let message: String
 }

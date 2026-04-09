@@ -33,11 +33,11 @@ mod tests {
 
     fn test_candidate(title: &str, use_count: u64, last_used: Option<i64>) -> Candidate {
         Candidate {
-            id: "test".to_string(),
+            id: "test".into(),
             kind: CandidateKind::App,
-            title: title.to_string(),
+            title: title.into(),
             subtitle: None,
-            path: "/test".to_string(),
+            path: "/test".into(),
             use_count,
             last_used_at_unix_s: last_used,
         }

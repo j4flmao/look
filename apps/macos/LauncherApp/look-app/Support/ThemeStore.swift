@@ -147,7 +147,7 @@ final class ThemeStore: ObservableObject {
 
         let lowered = query.lowercased()
         var startsWithMatches = allFonts.filter { $0.lowercased().hasPrefix(lowered) }
-        var containsMatches = allFonts.filter { !$0.lowercased().hasPrefix(lowered) && $0.lowercased().contains(lowered) }
+        let containsMatches = allFonts.filter { !$0.lowercased().hasPrefix(lowered) && $0.lowercased().contains(lowered) }
         startsWithMatches.append(contentsOf: containsMatches)
         return Array(startsWithMatches.prefix(limit))
     }

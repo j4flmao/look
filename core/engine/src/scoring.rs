@@ -4,7 +4,15 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 const SETTINGS_SUBTITLE_PREFIX: &str = "System Settings";
-const USE_COUNT_WEIGHT: u64 = 35;
+const SETTINGS_PATH_PREFIX: &str = "x-apple.systempreferences:";
+const BROWSE_USAGE_LOG_SCALE: f64 = 60.0;
+
+const RECENT_LAST_HOUR_BOOST: i64 = 140;
+const RECENT_TODAY_BOOST: i64 = 90;
+const RECENT_THIS_WEEK_BOOST: i64 = 40;
+const RECENT_THIS_MONTH_BOOST: i64 = 12;
+
+const SETTINGS_ON_NON_SETTINGS_QUERY_PENALTY: i64 = -180;
 
 pub(crate) fn contains_match_score(
     query: &str,
@@ -80,9 +88,7 @@ pub(crate) fn kind_bias(candidate: &Candidate) -> i64 {
 }
 
 pub(crate) fn query_kind_penalty(query: &str, candidate: &Candidate) -> i64 {
-    let looks_like_settings_query = QUERY_SETTINGS_HINTS
-        .iter()
-        .any(|token| query.contains(token));
+    let looks_like_settings_query = looks_like_settings_query(query);
 
     if looks_like_settings_query {
         match candidate.kind {
@@ -100,9 +106,32 @@ pub(crate) fn query_kind_penalty(query: &str, candidate: &Candidate) -> i64 {
             }
             CandidateKind::Folder | CandidateKind::File => BIAS_NON_APP_ON_SETTINGS_QUERY,
         }
+    } else if is_system_settings_candidate(candidate) {
+        SETTINGS_ON_NON_SETTINGS_QUERY_PENALTY
     } else {
         0
     }
+}
+
+pub(crate) fn looks_like_settings_query(query: &str) -> bool {
+    query.split_whitespace().any(|term| {
+        if term.is_empty() {
+            return false;
+        }
+
+        QUERY_SETTINGS_HINTS
+            .iter()
+            .any(|hint| term.contains(hint) || (term.len() >= 3 && hint.starts_with(term)))
+    })
+}
+
+pub(crate) fn is_system_settings_candidate(candidate: &Candidate) -> bool {
+    candidate.path.starts_with(SETTINGS_PATH_PREFIX)
+        || candidate
+            .subtitle
+            .as_deref()
+            .unwrap_or("")
+            .contains(SETTINGS_SUBTITLE_PREFIX)
 }
 
 pub(crate) fn path_depth_penalty(candidate: &Candidate) -> i64 {
@@ -126,31 +155,38 @@ pub(crate) fn default_browse_score(candidate: &Candidate, now_unix_s: i64) -> i6
         CandidateKind::File => 0,
     };
 
-    let frequency_u64 = candidate.use_count.saturating_mul(USE_COUNT_WEIGHT);
-    let frequency = frequency_u64.min(i64::MAX as u64) as i64;
+    let frequency = ((candidate.use_count as f64 + 1.0).log2() * BROWSE_USAGE_LOG_SCALE) as i64;
     let recency = candidate
         .last_used_at_unix_s
         .map(|last| {
             let age_s = (now_unix_s - last).max(0);
             let age_hours = age_s / 3600;
-            (2000 - (age_hours * 8)).max(0)
+            browse_recency_boost(age_hours)
         })
         .unwrap_or(0);
 
     kind_boost + frequency + recency
 }
 
+fn browse_recency_boost(age_hours: i64) -> i64 {
+    match age_hours {
+        0 => RECENT_LAST_HOUR_BOOST,
+        1..=24 => RECENT_TODAY_BOOST - ((age_hours - 1) / 4),
+        25..=168 => RECENT_THIS_WEEK_BOOST - ((age_hours - 25) / 12),
+        169..=720 => RECENT_THIS_MONTH_BOOST - ((age_hours - 169) / 72),
+        _ => 0,
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct ScoredMatch {
     candidate: Candidate,
     score: i64,
-    sort_title: String,
-    search_title: String,
 }
 
 impl PartialEq for ScoredMatch {
     fn eq(&self, other: &Self) -> bool {
-        self.score == other.score && self.sort_title == other.sort_title
+        self.score == other.score && self.candidate.title == other.candidate.title
     }
 }
 
@@ -158,28 +194,7 @@ impl Eq for ScoredMatch {}
 
 impl ScoredMatch {
     pub(crate) fn new(candidate: Candidate, score: i64) -> Self {
-        let sort_title = candidate.title.to_lowercase();
-        let search_title = sort_title.clone();
-        Self {
-            candidate,
-            score,
-            sort_title,
-            search_title,
-        }
-    }
-
-    pub(crate) fn new_with_search_title(
-        candidate: Candidate,
-        score: i64,
-        search_title: String,
-    ) -> Self {
-        let sort_title = candidate.title.to_lowercase();
-        Self {
-            candidate,
-            score,
-            sort_title,
-            search_title,
-        }
+        Self { candidate, score }
     }
 }
 
@@ -188,7 +203,7 @@ impl Ord for ScoredMatch {
         match self.score.cmp(&other.score) {
             Ordering::Less => Ordering::Greater,
             Ordering::Greater => Ordering::Less,
-            Ordering::Equal => self.sort_title.cmp(&other.sort_title),
+            Ordering::Equal => self.candidate.title.cmp(&other.candidate.title),
         }
     }
 }
@@ -217,17 +232,6 @@ pub(crate) fn finalize_top_k(heap: BinaryHeap<ScoredMatch>) -> Vec<(Candidate, i
     let mut out: Vec<(Candidate, i64)> = heap
         .into_iter()
         .map(|entry| (entry.candidate, entry.score))
-        .collect();
-    out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.title.cmp(&b.0.title)));
-    out
-}
-
-pub(crate) fn finalize_top_k_with_search(
-    heap: BinaryHeap<ScoredMatch>,
-) -> Vec<(Candidate, i64, String)> {
-    let mut out: Vec<(Candidate, i64, String)> = heap
-        .into_iter()
-        .map(|entry| (entry.candidate, entry.score, entry.search_title))
         .collect();
     out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.title.cmp(&b.0.title)));
     out
@@ -360,11 +364,11 @@ mod tests {
     #[test]
     fn query_kind_penalty_settings_hints() {
         let settings_app = Candidate {
-            id: "app.settings".to_string(),
+            id: "app:settings".into(),
             kind: CandidateKind::App,
-            title: "System Settings".to_string(),
-            subtitle: Some("System Settings".to_string()),
-            path: "/System/Applications/System Settings.app".to_string(),
+            title: "System Settings".into(),
+            subtitle: Some("System Settings".into()),
+            path: "/System/Applications/System Settings.app".into(),
             use_count: 0,
             last_used_at_unix_s: None,
         };
@@ -377,5 +381,50 @@ mod tests {
 
         assert!(settings_score > app_score);
         assert!(app_score > folder_score);
+    }
+
+    #[test]
+    fn query_kind_penalty_demotes_settings_for_non_settings_queries() {
+        let settings_app = Candidate {
+            id: "setting:network".into(),
+            kind: CandidateKind::App,
+            title: "Network".into(),
+            subtitle: Some("System Settings network".into()),
+            path: "x-apple.systempreferences:com.apple.preference.network".into(),
+            use_count: 0,
+            last_used_at_unix_s: None,
+        };
+
+        assert!(query_kind_penalty("ingo", &settings_app) < 0);
+    }
+
+    #[test]
+    fn looks_like_settings_query_accepts_short_prefixes() {
+        assert!(looks_like_settings_query("sett"));
+        assert!(looks_like_settings_query("priv"));
+        assert!(!looks_like_settings_query("ingo"));
+    }
+
+    #[test]
+    fn default_browse_score_recency_tiers_prefer_more_recent_candidates() {
+        let now = 1_775_462_400;
+        let mut candidate = app("Recent", "/Applications/Recent.app");
+        candidate.use_count = 1;
+
+        let mut last_hour = candidate.clone();
+        last_hour.last_used_at_unix_s = Some(now - 10 * 60);
+
+        let mut today = candidate.clone();
+        today.last_used_at_unix_s = Some(now - 6 * 3600);
+
+        let mut week = candidate.clone();
+        week.last_used_at_unix_s = Some(now - 3 * 24 * 3600);
+
+        let mut old = candidate;
+        old.last_used_at_unix_s = Some(now - 60 * 24 * 3600);
+
+        assert!(default_browse_score(&last_hour, now) > default_browse_score(&today, now));
+        assert!(default_browse_score(&today, now) > default_browse_score(&week, now));
+        assert!(default_browse_score(&week, now) > default_browse_score(&old, now));
     }
 }

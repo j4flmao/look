@@ -5,11 +5,11 @@ use std::env;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock, RwLock};
 use std::thread;
 use std::time::Instant;
 
-static ENGINE_CACHE: OnceLock<Mutex<QueryEngine>> = OnceLock::new();
+static ENGINE_CACHE: OnceLock<RwLock<QueryEngine>> = OnceLock::new();
 static JSON_ALLOCS: OnceLock<Mutex<HashMap<usize, CString>>> = OnceLock::new();
 static BOOTSTRAP_REFRESH_STARTED: OnceLock<()> = OnceLock::new();
 
@@ -30,13 +30,15 @@ pub(crate) fn default_db_path() -> PathBuf {
 
 pub(crate) fn with_engine<T>(f: impl FnOnce(&QueryEngine) -> T) -> T {
     let lock = engine_cache();
-    let guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let guard = lock.read().unwrap_or_else(|poisoned| poisoned.into_inner());
     f(&guard)
 }
 
 pub(crate) fn with_engine_mut<T>(f: impl FnOnce(&mut QueryEngine) -> T) -> T {
     let lock = engine_cache();
-    let mut guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut guard = lock
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     f(&mut guard)
 }
 
@@ -44,7 +46,7 @@ pub(crate) fn refresh_engine_cache() {
     if let Some(lock) = ENGINE_CACHE.get() {
         let path = default_db_path();
         if let Ok(engine) = QueryEngine::from_sqlite(path)
-            && let Ok(mut guard) = lock.lock()
+            && let Ok(mut guard) = lock.write()
         {
             *guard = engine;
         }
@@ -87,11 +89,11 @@ pub(crate) fn cstr_to_string(ptr: *const c_char) -> String {
         .into_owned()
 }
 
-fn engine_cache() -> &'static Mutex<QueryEngine> {
+fn engine_cache() -> &'static RwLock<QueryEngine> {
     let cache = ENGINE_CACHE.get_or_init(|| {
         let path = default_db_path();
         let engine = QueryEngine::from_sqlite(&path).unwrap_or_else(|_| QueryEngine::demo_seed());
-        Mutex::new(engine)
+        RwLock::new(engine)
     });
     start_background_bootstrap_refresh();
     cache

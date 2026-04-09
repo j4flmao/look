@@ -1,5 +1,7 @@
 use crate::runtime_config::log_debug;
 use crate::state::{cstr_to_string, store_json_allocation, with_engine};
+use look_engine::LaunchResult;
+use serde::Serialize;
 use std::ffi::CString;
 use std::os::raw::c_char;
 use std::time::Instant;
@@ -14,11 +16,28 @@ pub struct FfiSearchResult {
 }
 
 #[derive(serde::Serialize)]
-struct FfiSearchPayload {
-    query: String,
+struct FfiSearchPayload<'a> {
+    query: &'a str,
     count: usize,
     results: Vec<look_engine::LaunchResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<FfiErrorPayload>,
+}
+
+#[derive(Serialize)]
+struct FfiCompactSearchPayload<'a> {
+    count: usize,
+    results: Vec<FfiCompactLaunchResult<'a>>,
+}
+
+#[derive(Serialize)]
+struct FfiCompactLaunchResult<'a> {
+    id: &'a str,
+    kind: &'a str,
+    title: &'a str,
+    subtitle: Option<&'a str>,
+    path: &'a str,
+    score: i64,
 }
 
 #[derive(serde::Serialize)]
@@ -38,18 +57,76 @@ pub(crate) fn look_search_count_impl(query_len: u32) -> FfiSearchResult {
 
 pub(crate) fn look_search_json_impl(query: *const c_char, limit: u32) -> *mut c_char {
     let query = cstr_to_string(query);
-    let max = if limit == 0 {
-        DEFAULT_SEARCH_LIMIT
-    } else {
-        limit.min(MAX_SEARCH_LIMIT)
-    };
+    let max = normalized_limit(limit);
     let started_at = Instant::now();
 
     let results = with_engine(|engine| engine.search(&query, max as usize));
     let result_count = results.len();
+    let cstring = serialize_full_payload(&query, results);
+    log_debug(&format!(
+        "search query_len={} limit={} count={} elapsed_ms={}",
+        query.len(),
+        max,
+        result_count,
+        started_at.elapsed().as_millis()
+    ));
+    store_json_allocation(cstring)
+}
 
+pub(crate) fn look_search_json_compact_impl(query: *const c_char, limit: u32) -> *mut c_char {
+    let query = cstr_to_string(query);
+    let max = normalized_limit(limit);
+    let started_at = Instant::now();
+
+    let results = with_engine(|engine| engine.search(&query, max as usize));
+    let result_count = results.len();
+    let compact_results: Vec<FfiCompactLaunchResult<'_>> =
+        results.iter().map(FfiCompactLaunchResult::from).collect();
+    let payload = FfiCompactSearchPayload {
+        count: result_count,
+        results: compact_results,
+    };
+
+    let json = serde_json::to_string(&payload)
+        .unwrap_or_else(|_| "{\"count\":0,\"results\":[]}".to_string());
+    let cstring = CString::new(json).unwrap_or_else(|_| {
+        CString::new("{\"count\":0,\"results\":[]}").expect("valid static json")
+    });
+    log_debug(&format!(
+        "search_compact query_len={} limit={} count={} elapsed_ms={}",
+        query.len(),
+        max,
+        result_count,
+        started_at.elapsed().as_millis()
+    ));
+    store_json_allocation(cstring)
+}
+
+impl<'a> From<&'a LaunchResult> for FfiCompactLaunchResult<'a> {
+    fn from(value: &'a LaunchResult) -> Self {
+        Self {
+            id: &value.id,
+            kind: &value.kind,
+            title: &value.title,
+            subtitle: value.subtitle.as_deref(),
+            path: &value.path,
+            score: value.score,
+        }
+    }
+}
+
+fn normalized_limit(limit: u32) -> u32 {
+    if limit == 0 {
+        DEFAULT_SEARCH_LIMIT
+    } else {
+        limit.min(MAX_SEARCH_LIMIT)
+    }
+}
+
+fn serialize_full_payload(query: &str, results: Vec<look_engine::LaunchResult>) -> CString {
+    let result_count = results.len();
     let payload = FfiSearchPayload {
-        query: query.clone(),
+        query,
         count: result_count,
         results,
         error: None,
@@ -67,15 +144,8 @@ pub(crate) fn look_search_json_impl(query: *const c_char, limit: u32) -> *mut c_
         })
         .to_string()
     });
-    let cstring = CString::new(json).unwrap_or_else(|_| {
+
+    CString::new(json).unwrap_or_else(|_| {
         CString::new("{\"query\":\"\",\"count\":0,\"results\":[]}").expect("valid static json")
-    });
-    log_debug(&format!(
-        "search query_len={} limit={} count={} elapsed_ms={}",
-        query.len(),
-        max,
-        result_count,
-        started_at.elapsed().as_millis()
-    ));
-    store_json_allocation(cstring)
+    })
 }

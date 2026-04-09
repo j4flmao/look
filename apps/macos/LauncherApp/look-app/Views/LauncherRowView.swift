@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct LauncherRowView: View {
     @EnvironmentObject private var themeStore: ThemeStore
@@ -12,7 +13,7 @@ struct LauncherRowView: View {
         if result.kind == .clipboard {
             return NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
                 ?? NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)
-                ?? NSWorkspace.shared.icon(forFileType: "txt")
+                ?? NSWorkspace.shared.icon(for: .plainText)
         }
 
         if result.id.hasPrefix("setting:") {

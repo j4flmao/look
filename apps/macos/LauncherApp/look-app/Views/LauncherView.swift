@@ -976,17 +976,23 @@ struct LauncherView: View {
         await withTaskGroup(of: (String, TranslationResult).self) { group in
             group.addTask {
                 let translated = self.bridge.translate(text: text, targetLang: "en")?.translated
-                let definition = translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
+                let definition = await MainActor.run {
+                    translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
+                }
                 return ("en", TranslationResult(translated: translated, dictionaryDefinition: definition))
             }
             group.addTask {
                 let translated = self.bridge.translate(text: text, targetLang: "vi")?.translated
-                let definition = translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
+                let definition = await MainActor.run {
+                    translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
+                }
                 return ("vi", TranslationResult(translated: translated, dictionaryDefinition: definition))
             }
             group.addTask {
                 let translated = self.bridge.translate(text: text, targetLang: "ja")?.translated
-                let definition = translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
+                let definition = await MainActor.run {
+                    translated.flatMap { DictionaryParser.parse(self.fetchRawDefinition(for: $0) ?? "") }
+                }
                 return ("ja", TranslationResult(translated: translated, dictionaryDefinition: definition))
             }
 

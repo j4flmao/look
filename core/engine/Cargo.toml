@@ -9,6 +9,7 @@ look-indexing = { path = "../indexing" }
 look-matching = { path = "../matching" }
 look-ranking = { path = "../ranking" }
 look-storage = { path = "../storage" }
+ignore = "0.4"
 plist = "1"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
