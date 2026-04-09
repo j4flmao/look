@@ -1,29 +1,9 @@
 use crate::runtime_config::{log_debug, log_error};
 use crate::state::{cstr_to_string, default_db_path, with_engine_mut};
+use look_indexing::{CandidateIdKind, UsageAction};
 use look_storage::SqliteStore;
 use std::os::raw::c_char;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-const VALID_CANDIDATE_PREFIXES: [&str; 3] = ["app:", "file:", "folder:"];
-const VALID_ACTIONS: [&str; 7] = [
-    "open",
-    "open_app",
-    "open_file",
-    "open_folder",
-    "open_url",
-    "execute",
-    "web_search",
-];
-
-fn is_valid_candidate_id(id: &str) -> bool {
-    VALID_CANDIDATE_PREFIXES
-        .iter()
-        .any(|prefix| id.starts_with(prefix))
-}
-
-fn is_valid_action(action: &str) -> bool {
-    VALID_ACTIONS.contains(&action)
-}
 
 pub(crate) fn look_record_usage_impl(candidate_id: *const c_char, action: *const c_char) -> bool {
     let candidate_id = cstr_to_string(candidate_id);
@@ -36,7 +16,9 @@ pub(crate) fn look_record_usage_impl(candidate_id: *const c_char, action: *const
     let trimmed_id = candidate_id.trim();
     let trimmed_action = action.trim();
 
-    if !is_valid_candidate_id(trimmed_id) || !is_valid_action(trimmed_action) {
+    if CandidateIdKind::from_candidate_id(trimmed_id).is_none()
+        || trimmed_action.parse::<UsageAction>().is_err()
+    {
         log_error(&format!(
             "invalid usage record attempt: id={}, action={}",
             trimmed_id, trimmed_action
