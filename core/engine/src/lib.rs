@@ -411,4 +411,56 @@ mod tests {
         assert!(!results.is_empty());
         assert_eq!(results[0].0.id, "file.repo.readme");
     }
+
+    #[test]
+    fn ambiguous_query_ingo_prefers_relevant_file_over_settings_alias_noise() {
+        let mut settings = Candidate::new(
+            "setting:network",
+            CandidateKind::App,
+            "Network",
+            "x-apple.systempreferences:com.apple.preference.network",
+        );
+        settings.subtitle = Some(
+            "System Settings settings network ethernet dns proxy vpn notifications".to_string(),
+        );
+
+        let file = Candidate::new(
+            "file.concurrency",
+            CandidateKind::File,
+            "Concurrency in Go.pdf",
+            "/Users/test/Documents/books/Concurrency in Go.pdf",
+        );
+
+        let engine = QueryEngine::new(vec![settings, file]);
+        let results = engine.search_scored("ingo", 10);
+        assert_eq!(
+            results.first().map(|(candidate, _)| candidate.id.as_str()),
+            Some("file.concurrency")
+        );
+    }
+
+    #[test]
+    fn settings_prefix_query_sett_prioritizes_system_settings_entry() {
+        let mut settings_app = Candidate::new(
+            "setting:general",
+            CandidateKind::App,
+            "General",
+            "x-apple.systempreferences:com.apple.preference.general",
+        );
+        settings_app.subtitle = Some("System Settings settings general".to_string());
+
+        let settings_folder = Candidate::new(
+            "folder.settings",
+            CandidateKind::Folder,
+            "settings",
+            "/Users/test/Documents/settings",
+        );
+
+        let engine = QueryEngine::new(vec![settings_folder, settings_app]);
+        let results = engine.search_scored("sett", 10);
+        assert_eq!(
+            results.first().map(|(candidate, _)| candidate.id.as_str()),
+            Some("setting:general")
+        );
+    }
 }
