@@ -272,7 +272,6 @@ Out of scope for v1:
 - Architecture guide (canonical): [docs/architecture.md](docs/architecture.md)
 - Feature status: [docs/features.md](docs/features.md)
 - Backend guide (contributors): [docs/backend-guide.md](docs/backend-guide.md)
-- Homebrew release notes: [docs/homebrew-release.md](docs/homebrew-release.md)
 - Task tracking: [docs/tasks.md](docs/tasks.md)
 
 ## License
