@@ -276,12 +276,44 @@ fn strip_comments(value: &str) -> &str {
 }
 
 fn parse_csv(value: &str) -> Vec<String> {
-    value
-        .split(',')
-        .map(|entry| entry.trim())
-        .filter(|entry| !entry.is_empty())
-        .map(|entry| entry.to_string())
-        .collect()
+    let mut values = Vec::new();
+    let mut current = String::new();
+    let mut escaping = false;
+
+    for ch in value.chars() {
+        if escaping {
+            current.push(ch);
+            escaping = false;
+            continue;
+        }
+
+        if ch == '\\' {
+            escaping = true;
+            continue;
+        }
+
+        if ch == ',' {
+            let trimmed = current.trim();
+            if !trimmed.is_empty() {
+                values.push(trimmed.to_string());
+            }
+            current.clear();
+            continue;
+        }
+
+        current.push(ch);
+    }
+
+    if escaping {
+        current.push('\\');
+    }
+
+    let trimmed = current.trim();
+    if !trimmed.is_empty() {
+        values.push(trimmed.to_string());
+    }
+
+    values
 }
 
 fn parse_positive_usize(value: &str) -> Option<usize> {
@@ -319,6 +351,12 @@ mod tests {
     fn parse_csv_skips_empty_tokens() {
         let parsed = parse_csv("Desktop, Documents, ,Downloads");
         assert_eq!(parsed, vec!["Desktop", "Documents", "Downloads"]);
+    }
+
+    #[test]
+    fn parse_csv_supports_escaped_commas() {
+        let parsed = parse_csv("/Users/demo/Foo\\,Bar,/Users/demo/Baz");
+        assert_eq!(parsed, vec!["/Users/demo/Foo,Bar", "/Users/demo/Baz"]);
     }
 
     #[test]
