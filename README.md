@@ -95,11 +95,11 @@ Indexing config supports include roots plus exclude rules for both apps and file
 - UI includes: Spotlight-style launcher window (hidden from `Cmd+Tab`), theme/settings panel, command mode, and keyboard-first navigation.
 
 - Backend currently includes: SQLite-backed candidate storage, dynamic app/settings/file indexing, and usage event logging.
-- User-facing guide: [docs/user-guide.md](docs/user-guide.md).
-- Backend contributor guide: [docs/backend-guide.md](docs/backend-guide.md).
-- Feature planning: [docs/features.md](docs/features.md).
+- User guide: [docs/user-guide.md](docs/user-guide.md).
+- Backend contributor guide (edit targets + verification): [docs/backend-guide.md](docs/backend-guide.md).
+- Feature status: [docs/features.md](docs/features.md).
 - Task breakdown: [docs/tasks.md](docs/tasks.md).
-- Architecture notes: [docs/architecture.md](docs/architecture.md).
+- Architecture guide (canonical): [docs/architecture.md](docs/architecture.md).
 
 ## Current keyboard UX
 
@@ -269,9 +269,9 @@ Out of scope for v1:
 ## Documentation
 
 - User guide: [docs/user-guide.md](docs/user-guide.md)
-- Architecture: [docs/architecture.md](docs/architecture.md)
-- Features plan: [docs/features.md](docs/features.md)
-- Backend guide: [docs/backend-guide.md](docs/backend-guide.md)
+- Architecture guide (canonical): [docs/architecture.md](docs/architecture.md)
+- Feature status: [docs/features.md](docs/features.md)
+- Backend guide (contributors): [docs/backend-guide.md](docs/backend-guide.md)
 - Homebrew release notes: [docs/homebrew-release.md](docs/homebrew-release.md)
 - Task tracking: [docs/tasks.md](docs/tasks.md)
 

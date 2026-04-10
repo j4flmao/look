@@ -1,128 +1,70 @@
-# Features Plan
+# Feature Status
 
-This page defines the near-term feature scope for `look` and how each feature maps to backend responsibilities.
+This document tracks what `look` supports today and what is planned next.
 
 ## Product pillars
 
-- keyboard-first, low-latency launcher
-- local-first indexing and ranking
-- command utilities integrated in the same query flow
-- predictable behavior with clear safety cues
-- extensible roadmap guided by practical user feedback
+- keyboard-first launcher UX
+- low-latency local search
+- practical ranking and personalization
+- focused built-in tools (not plugin-first)
+- predictable behavior with clear controls
 
-## Feature tracks
+## Available now
 
-## 1) Core launcher search
+### Core search and launch
 
-### Current
+- app/file/folder search from one input
+- scoped query prefixes: `a"`, `f"`, `d"`, `r"`
+- path-fragment friendly matching (slash-biased queries)
+- open with `Enter`, reveal in Finder with `Cmd+F`
+- copy selected file/folder path/content handle with `Cmd+C`
 
-- app search UI
-- command mode (`calc`, `shell`, `kill`, `sys`)
-- settings panel and theme customization
-- SQLite-backed candidate persistence and usage tracking
-- dynamic app/settings/file indexing from backend sources
-- query prefixes: `a"` apps, `f"` files, `d"` folders, `r"` regex
-- query prefix: `c"` for clipboard history (latest 10 text clips)
-- slash-path query bias (example: `git/books-pc`)
-- `Cmd+C` copy selected file/folder to pasteboard
-- `Cmd+F` reveal selected app/file/folder in Finder
+### Clipboard and translation
 
-### Next
+- clipboard history mode with `c"` prefix
+- in-memory clipboard history (latest text clips)
+- quick translation with `t"...`
+- dictionary lookup panel with `tw"...`
+- translation network guarded by `translate_allow_network`
 
-- unified result model and action execution
-- deeper settings sub-page coverage and quality filtering
+### Command mode
 
-## 2) Command mode
+- `Cmd+/` command mode entry
+- built-in commands: `calc`, `shell`, `kill`, `sys`
+- kill flow with explicit confirmation
+- warning cue when shell input contains `sudo`
 
-### Current
+### Settings and runtime config
 
-- `Cmd+/` to enter command mode
-- `calc`, `shell`, `kill`, and `sys`
-- live calculator preview and quick copy result behavior
-- `Esc` exits command mode to app list
-- `Shift+Esc` hides launcher
+- in-app settings panel (`Cmd+Shift+,`)
+- local config file `~/.look.config`
+- runtime reload (`Cmd+Shift+;`)
+- indexing, UI, privacy/logging, launch-at-login controls
 
-### Next
+### Backend and persistence
 
-- command registry in backend
-- safer shell execution policy (warning + confirmation path)
-- richer built-in commands (`open`, `help`, `theme`, etc.)
+- SQLite-backed candidate + usage storage
+- startup/index refresh pipeline for apps/files/settings
+- usage-event feedback loop for ranking updates
+- Rust core + FFI bridge to Swift app shell
 
-## 3) Ranking and personalization
+## In progress / near-term
 
-### Next
+- better coverage for deeper System Settings pages
+- safer shell policy controls (more explicit execution guardrails)
+- richer benchmark reporting (p50/p95/p99) for query/index paths
+- tighter ranking calibration across title/subtitle/path signals
 
-- usage event logging
-- recency + frequency scoring
-- per-query behavior tuning
+## Planned direction
 
-## 4) Settings and persistence
+- incremental indexing via file-system events
+- optional extension/plugin injection model (without bloating base UX)
+- broader platform support after macOS quality stabilizes (Windows first)
 
-### Current
+## Out of scope for v1
 
-- settings persisted to `~/.look.config`
-- advanced controls for indexing, translation privacy, backend log level, and launch-at-login
-
-### Next
-
-- indexing roots and exclude rules
-- command/security preferences
-- backend-driven settings persistence
-
-## 5) Performance and reliability
-
-### Next
-
-- in-memory top-N query path
-- incremental indexing updates
-- benchmark suite for query/index latency
-- structured error handling across backend and bridge
-- focused test coverage for ranking/indexing/ffi behavior
-- development-friendly logging and diagnostics
-
-## 6) Extensibility roadmap
-
-### Planned
-
-- accept and evaluate community feature proposals continuously
-- add plugin/extension injection path for developer customization
-- keep extension model optional so base launcher remains simple and fast
-
-## 7) Dictionary lookup (`tw"` prefix)
-
-### Current
-
-- macOS system dictionary integration via `DCSCopyTextDefinition`
-- Multi-language support: English, Vietnamese, Japanese
-- Displays up to 10 senses per section
-- Shows up to 2 examples per sense (where available)
-
-### Language-specific behavior
-
-**English:**
-- Parses POS sections: adjective, noun, verb, adverb, exclamation, interjection
-- Extracts senses numbered with "1. ", "2. ", etc.
-- Shows antonyms when available (after ANTONYMS marker)
-- Special handling for "exclamation" type (no numbered senses)
-- Phrases section extracted separately
-
-**Vietnamese:**
-- Detects POS keywords: thán từ, danh từ, động từ, tính từ, trạng từ, giới từ, liên từ, đại từ
-- Supports entries without explicit POS (uses "adjective" as default)
-- Parses numbered senses and distributes examples
-- Truncates definitions longer than 150 characters
-
-**Japanese:**
-- Detects Japanese characters (Hiragana, Katakana, Kanji)
-- WORD CHOICE section parsed separately (if present)
-- Numbered senses with 【annotations】 removed from display
-- Reference markers (⇨...) removed from definitions
-- Handles both WORD CHOICE-first and numbered-senses-first formats
-
-### Known limitations
-
-- Examples are limited to 2 per sense (excess examples not shown)
-- Very long definitions are truncated with "..."
-- Vietnamese entries without POS keywords default to "adjective"
-- Japanese reference markers like （⇨...） are stripped
-- English phrases limited to 3 items
+- cloud-first workflows
+- semantic/vector retrieval
+- full content indexing of file bodies
+- mandatory plugin ecosystem for core workflow

@@ -1,108 +1,283 @@
-# Architecture
+# Architecture Guide
 
-The project uses a layered architecture:
+This is the canonical architecture document for `look`.
 
-```text
-macOS App Shell (Swift / AppKit)
-    |
-    | bridge / FFI
-    v
-Core Engine (Rust)
-    |- indexing
-    |- matching
-    |- ranking
-    |- storage
+It intentionally merges architecture explanation and diagrams into one place, so design decisions and Mermaid views stay in sync.
+
+## 1) System overview and design intent
+
+`look` is a keyboard-first macOS launcher designed for low-latency local search. The architecture separates UI concerns (Swift/AppKit/SwiftUI) from search/index/ranking concerns (Rust), joined through a small FFI boundary.
+
+Key design goals:
+
+- low per-keystroke latency,
+- predictable behavior as candidate volume grows,
+- practical relevance via text quality + usage/recency,
+- local-first storage and processing,
+- narrow, stable bridge between frontend and backend.
+
+```mermaid
+flowchart LR
+    User[User keyboard input] --> Hotkey[GlobalHotKeyManager Cmd+Space]
+    Hotkey --> App[SwiftUI macOS App\nlook_appApp / AppDelegate / LauncherView]
+
+    App --> Clipboard[ClipboardHistoryStore\nin-memory history]
+    App --> Theme[ThemeStore\n.look.config + UserDefaults]
+    App --> Bridge[EngineBridge.swift]
+
+    Bridge --> FFI[bridge/ffi\nC ABI]
+    FFI --> Engine[core/engine\nQueryEngine]
+    Engine --> Storage[core/storage\nSqliteStore]
+    Storage --> DB[(SQLite look.db)]
+
+    Engine --> Indexers[Index discovery\napps + files + settings]
+    Indexers --> DB
+
+    App --> OS[macOS APIs\nAppKit / NSWorkspace / Carbon]
+    OS --> User
 ```
 
-## Module responsibilities
+---
 
-- `apps/macos`: launcher window, keyboard input, global hotkey, action dispatch
-- `bridge/ffi`: narrow stable interface between Swift shell and Rust core
-- `core/indexing`: scan sources and build/update candidate index
-- `core/matching`: fuzzy/exact/prefix candidate matching
-- `core/ranking`: history and recency-aware score adjustments
-- `core/storage`: persistence for index metadata, config, and usage history
-- `core/engine`: query pipeline orchestration and top-N result retrieval
+## 2) Module boundaries and responsibilities
 
-## Engine internals
+- `apps/macos`: launcher window, keyboard input, global hotkey, action dispatch, clipboard/history mode, command mode, theme/settings UX.
+- `bridge/ffi`: narrow C ABI surface for search, usage recording, config reload, translation, and error payloads.
+- `core/indexing`: candidate model and indexing helpers used by engine/storage flows.
+- `core/matching`: exact/prefix/fuzzy matching primitives.
+- `core/ranking`: ranking helpers (usage/recency-aware adjustments and score composition).
+- `core/storage`: SQLite integration, schema/migrations, candidate/usage persistence.
+- `core/engine`: query parsing, indexing orchestration, scoring, top-k retrieval, in-memory cache management.
 
-- `core/engine/src/config.rs`: centralized engine tunables (scan roots, limits, ranking weights)
-- `core/engine/src/query.rs`: query parsing and prefix handling (`a"`, `f"`, `d"`, `r"`)
-- `core/engine/src/scoring.rs`: scoring helpers, biases/penalties, top-k heap helpers
-- `core/engine/src/search.rs`: search pipeline orchestration
-- `core/engine/src/index/apps.rs`: installed app discovery
-- `core/engine/src/index/settings.rs`: System Settings entry discovery
-- `core/engine/src/index/files.rs`: local file/folder discovery
-- `core/engine/src/index/mod.rs`: discovery orchestration
-- `core/engine/src/lib.rs`: bootstrap/storage integration and test coverage
+```mermaid
+flowchart TB
+    subgraph CoreWorkspace[core workspace]
+      IDX[look-indexing]
+      MAT[look-matching]
+      RNK[look-ranking]
+      STG[look-storage]
+      ENG[look-engine]
+    end
 
-## Optional web search action
+    IDX --> ENG
+    MAT --> ENG
+    RNK --> ENG
+    STG --> ENG
 
-- local search remains primary and default
-- web search is an explicit handoff action via `Cmd+Enter`
-- current default provider is Google
+    subgraph Bridge[bridge/ffi]
+      FFI[look-ffi]
+    end
 
-## Clipboard history
-
-- clipboard history is implemented in the macOS shell layer (Swift)
-- query prefix `c"` switches normal search results to clipboard history mode
-- stores latest 10 text clipboard entries in memory for current app session
-- selecting a clipboard result with `Enter` copies that content back to clipboard
-- preview panel supports deleting individual clipboard entries from look history
-
-## Command mode
-
-- `Cmd+/` enters command mode
-- command mode currently supports `calc` and `shell`
-- command mode also includes `kill` and `sys`
-- `calc` supports live result preview and 4-decimal formatted output
-- `shell` executes command text and returns stdout/stderr summary
-- shell commands containing `sudo` trigger an orange warning border
-- `Esc` exits command mode back to app/file list
-- `Shift+Esc` hides launcher window
-
-## Window behavior
-
-- global hotkey `Cmd+Space` toggles launcher visibility (when not intercepted by Spotlight)
-- `Escape` hides launcher when not in command mode
-- `Cmd+F` reveals currently selected app/file/folder in Finder
-- launcher auto-hides on focus loss
-- app uses accessory activation behavior (hidden from `Cmd+Tab` app switcher)
-
-## Settings panel
-
-- `Cmd+Shift+,` toggles in-app settings/docs panel
-- appearance controls: tint color, blur style, blur opacity
-- advanced controls: background image, indexing depth/limit, translation network privacy, backend log level, launch-at-login
-- settings are persisted locally
-
-## Query pipeline
-
-`query -> candidate collection -> matching -> ranking -> top results`
-
-Candidate collection currently includes:
-
-- installed apps
-- curated System Settings quick links (stored as `setting:*` candidates)
-- local files/folders from Desktop/Documents/Downloads
-
-## Data model
-
-```text
-Candidate {
-  id
-  kind        // app | file | folder
-  title
-  subtitle
-  path
-  use_count
-  last_used_at
-}
+    ENG --> FFI
+    IDX --> FFI
+    STG --> FFI
 ```
 
-## Performance goals
+---
 
-- launcher appears in under 50 ms perceived latency
-- query updates in under 10 ms for top-N from memory
-- near-zero idle CPU
-- small and stable memory footprint
+## 3) Request path and query understanding
+
+Search request path:
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant LV as LauncherView
+    participant EB as EngineBridge
+    participant FFI as look_search_json_compact
+    participant QE as QueryEngine
+
+    U->>LV: Type query
+    LV->>LV: Debounce and cancel stale task
+    LV->>EB: search(query, limit)
+    EB->>FFI: C ABI call
+    FFI->>QE: with_engine(search)
+    QE->>QE: parse -> match -> rank -> top-k
+    QE-->>FFI: Vec LaunchResult
+    FFI-->>EB: JSON payload
+    EB-->>LV: [LauncherResult]
+```
+
+Query mode parsing in engine supports explicit prefixes:
+
+- `a"` app-only,
+- `f"` file-only,
+- `d"` folder-only,
+- `r"` regex mode,
+- empty query browse mode.
+
+Normalization uses Unicode decomposition and diacritic folding to improve matching consistency across accented input.
+
+```mermaid
+flowchart LR
+    Input[raw query] --> Parse[ParsedQuery from_input]
+    Parse --> Prefix{prefix type}
+
+    Prefix -->|empty query| Browse[default_browse_score]
+    Prefix -->|regex mode| Regex[RegexBuilder title/path/subtitle match]
+    Prefix -->|normal text| Text[Text search path]
+```
+
+---
+
+## 4) Indexing and persistence lifecycle
+
+The indexing flow is designed as a bounded pipeline:
+
+- discover candidates from apps/files/settings,
+- deduplicate by id,
+- chunked upsert to SQLite,
+- delete stale entries,
+- prune usage history,
+- refresh in-memory cache for fast queries.
+
+```mermaid
+flowchart TD
+    Start[Engine cache init or config reload] --> Bootstrap[QueryEngine bootstrap_sqlite]
+    Bootstrap --> LoadCfg[RuntimeConfig load from .look.config]
+    LoadCfg --> OpenStore[SqliteStore open and migrate]
+    OpenStore --> Stream[discover_candidates_stream]
+
+    Stream --> Apps[discover_installed_apps]
+    Stream --> Settings[discover_system_settings_entries]
+    Stream --> FilesThread[Thread discover_local_files_and_folders]
+
+    Apps --> Dedup[Deduplicate by candidate id]
+    Settings --> Dedup
+    FilesThread --> Dedup
+
+    Dedup --> ChunkUpsert[Chunked upsert_candidates_indexed]
+    ChunkUpsert --> DeleteStale[delete_stale_candidates]
+    DeleteStale --> UsagePrune[prune usage events by age and max rows]
+    UsagePrune --> RefreshCache[refresh_engine_cache]
+    RefreshCache --> Ready[Search-ready in-memory engine]
+```
+
+Persistence model:
+
+```mermaid
+erDiagram
+    CANDIDATES {
+        text id PK
+        text kind
+        text title
+        text subtitle
+        text path
+        integer use_count
+        integer last_used_at_unix_s
+        integer indexed_at_unix_s
+    }
+
+    USAGE_EVENTS {
+        integer id PK
+        text candidate_id FK
+        text action
+        integer used_at_unix_s
+    }
+
+    SETTINGS {
+        text key PK
+        text value
+    }
+
+    INDEX_STATE {
+        text source PK
+        integer last_indexed_at_unix_s
+    }
+
+    CANDIDATES ||--o{ USAGE_EVENTS : candidate_id
+```
+
+---
+
+## 5) Ranking, actions, and feedback loop
+
+Search ranking combines multiple signals:
+
+- fuzzy title/subtitle matching,
+- contains/token and path matching,
+- usage/recency-aware score adjustments,
+- kind bias and path depth penalties,
+- bounded top-k selection and optional rerank.
+
+```mermaid
+flowchart LR
+    Text[Text search path] --> Fuzzy[fuzzy_score_prepared title and subtitle]
+    Text --> Contains[contains_match_score]
+    Text --> Path[path_match_score when slash hint]
+
+    Fuzzy --> Base[Choose max base score]
+    Contains --> Base
+    Path --> Base
+
+    Base --> Rank[rank_score + kind_bias + penalties]
+    Rank --> TopK[BinaryHeap top-k pool]
+    TopK --> Rerank[quality rerank for top-N when query len >= 3]
+    Rerank --> Final[sort and return limit]
+```
+
+Usage recording closes the loop by updating persistent and in-memory state after open actions:
+
+```mermaid
+sequenceDiagram
+    participant UI as Swift UI
+    participant EB as EngineBridge
+    participant FFI as look_record_usage_json
+    participant ST as SqliteStore
+    participant QE as QueryEngine cache
+
+    UI->>EB: recordUsage(candidateId, action)
+    EB->>FFI: look_record_usage_json(id, action)
+    FFI->>FFI: Validate candidate id prefix and action
+    FFI->>ST: INSERT usage_events and UPDATE candidates
+    FFI->>QE: record_usage_in_memory(candidateId, now)
+    FFI-->>EB: JSON {ok,error}
+    EB-->>UI: Optional BridgeError
+```
+
+---
+
+## 6) UI behavior, operational notes, and performance targets
+
+UI interaction modes:
+
+```mermaid
+stateDiagram-v2
+    [*] --> NormalSearch
+    NormalSearch --> ClipboardMode: clipboard prefix
+    NormalSearch --> TranslationMode: translation prefix
+    NormalSearch --> CommandMode: Cmd+/
+
+    CommandMode --> NormalSearch: Esc
+    ClipboardMode --> NormalSearch: remove clipboard prefix
+    TranslationMode --> NormalSearch: clear translation prefix
+
+    state NormalSearch {
+      [*] --> Results
+      Results --> OpenTarget: Enter
+      Results --> RevealFinder: Cmd+F
+      Results --> WebSearch: Cmd+Enter
+    }
+
+    state CommandMode {
+      [*] --> Calc
+      Calc --> Shell: select /shell
+      Shell --> Kill: select /kill
+      Kill --> Sys: select /sys
+    }
+```
+
+Behavioral notes:
+
+- global hotkey `Cmd+Space` toggles launcher visibility,
+- web search is explicit handoff (`Cmd+Enter`),
+- clipboard history mode is shell-side and in-memory for current session,
+- command mode supports `calc`, `shell`, `kill`, `sys`,
+- settings panel controls theme/index/runtime knobs and persists locally.
+
+Performance targets:
+
+- launcher appearance under ~50 ms perceived latency,
+- query update under ~10 ms for top-N from memory,
+- near-zero idle CPU,
+- stable memory footprint.
