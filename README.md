@@ -5,7 +5,9 @@
 `look` is a minimal, rofi-inspired macOS launcher focused on fast local actions,
 built to feel instant: type, move, and launch without leaving the keyboard.
 
-![Look demo (placeholder)](assets/look-demo.gif)
+**Demo:** (Watch the demo video on **[youtube-video](https://www.youtube.com/watch?v=4Twb4We3PIs)** for better experience)
+
+![Look demo (placeholder)](assets/look.gif)
 
 Highlights:
 
