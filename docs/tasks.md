@@ -92,6 +92,28 @@ Recently completed (current optimization cycle):
 - [x] prune `usage_events` by age window (90 days)
 - [x] enforce max `usage_events` cap (50,000 rows)
 
+## Milestone W: Windows port (separate track)
+
+Reference: `docs/windows-port-plan.md`
+
+- [x] draft Windows shell source structure in `docs/windows-port-plan.md`
+- [x] draft Rust platform refactor/change plan in `docs/windows-port-plan.md`
+- [ ] define Windows v1 parity checklist from current macOS behavior (`README.md`, `docs/user-guide.md`)
+- [ ] split engine indexing into platform adapters (macOS/Windows) without changing ranking/search core
+- [ ] implement Windows app discovery sources (Start Menu + install roots fallback)
+- [ ] implement curated Windows Settings catalog (`ms-settings:` targets)
+- [ ] add Windows path defaults/normalization for config bootstrap and exclude handling
+- [ ] verify FFI API stability for multi-shell use and add Windows smoke coverage in CI
+- [ ] scaffold native Windows shell (`apps/windows/LauncherApp/`) with WinUI 3
+- [ ] wire FFI search + result rendering + keyboard navigation in Windows shell
+- [ ] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff)
+- [ ] implement global hotkey + hide/show/focus lifecycle parity on Windows
+- [ ] implement Windows clipboard history mode (`c"`) with listener-first capture strategy
+- [ ] implement Windows command mode parity (`calc`, `shell`, `kill`, `sys`)
+- [ ] implement Windows launch-at-login integration
+- [ ] add Windows packaging/signing/release pipeline (`.msix`/`.msi`) and documentation
+- [ ] run closed beta and fix top reliability/performance parity regressions before GA
+
 ## Milestone G: Reliability (errors, tests, logs)
 
 - [x] complete phase-2 structured error model across engine/storage/ffi boundaries

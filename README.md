@@ -2,16 +2,27 @@
 
 <img src="assets/icon.png" alt="look icon" width="96" />
 
-A minimal, rofi-inspired macOS launcher focused on fast local actions:
+`look` is a minimal, rofi-inspired macOS launcher focused on fast local actions,
+built to feel instant: type, move, and launch without leaving the keyboard.
 
-- launch installed apps
-- search local files and folders by name
-- clipboard history search (`c"`) with inline preview
-- quick command mode for calculator, shell, kill, and system info
+![Look demo (placeholder)](assets/look-demo.gif)
 
-**Introduction video:** _TODO_
+Highlights:
 
-Default behavior:
+- very fast local app and file search
+- clipboard history lookup with preview
+- built-in quick commands (calculator, shell, force quit, system info)
+- lightweight native app with local-first behavior
+
+## Quick navigation
+
+- [Installation](#installation)
+- [Current keyboard UX](#current-keyboard-ux)
+- [Quick start](#quick-start)
+- [Product scope](#product-scope)
+- [Documentation](#documentation)
+
+## Core workflow
 
 - launch top result with `Enter`
 - clipboard history query with `c"<word>`
@@ -21,8 +32,6 @@ Default behavior:
 - reveal selected app/file/folder in Finder with `Cmd+F`
 - command mode with `Cmd+/` (`calc`, `shell`, `kill`, `sys`)
 - force-quit flow in command mode (`kill`)
-
-The project is designed around low latency, keyboard-first interaction, and a small native footprint.
 
 ## Positioning
 
@@ -66,21 +75,15 @@ Indexing config supports include roots plus exclude rules for both apps and file
 
 ![Look UI 2](assets/look-ui/2.png)
 
-![Look UI 3](assets/look-ui/3.png)
-
 ![Look UI 4](assets/look-ui/4.png)
 
 ![Look UI 5](assets/look-ui/5.png)
 
-![Look UI 6](assets/look-ui/6.png)
-
 ![Look UI 7](assets/look-ui/7.png)
-
-![Look UI 8](assets/look-ui/8.png)
 
 ![Look UI 9](assets/look-ui/9.png)
 
-## Current status
+## Project status
 
 - Swift macOS app scaffold is located at `apps/macos/LauncherApp/look-app/` with project file `apps/macos/LauncherApp/look-app.xcodeproj`.
 - Rust core workspace is initialized under `core/`.
