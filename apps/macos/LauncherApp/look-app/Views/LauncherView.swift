@@ -12,6 +12,7 @@ struct LauncherView: View {
         case success
         case error
         case info
+        case warning
 
         var background: Color {
             switch self {
@@ -21,6 +22,8 @@ struct LauncherView: View {
                 return .red.opacity(0.45)
             case .info:
                 return .blue.opacity(0.40)
+            case .warning:
+                return .orange.opacity(0.45)
             }
         }
     }
@@ -808,11 +811,33 @@ struct LauncherView: View {
     }
 
     private func reloadConfig() {
-        themeStore.reloadFromConfig()
+        let result = themeStore.reloadFromConfig()
         let backendReloaded = bridge.reloadConfig()
-        showBanner(backendReloaded ? "Config reloaded" : "Config reload failed")
+
+        // Sync settings blur multiplier to AppUIState
+        if let blurMultiplier = result.settingsBlurMultiplier {
+            appUIState.settingsBlurMultiplier = blurMultiplier
+        }
+
+        var message = "Config reloaded"
+        var style: BannerStyle = .info
+        var duration: Double = 2.0
+        var copyText: String? = nil
+
+        if !backendReloaded {
+            message = "Backend config reload failed"
+            style = .error
+            duration = 4.0
+        } else if !result.warnings.isEmpty {
+            message = result.warnings.joined(separator: ", ")
+            style = .warning
+            duration = 5.0
+            copyText = result.warnings.joined(separator: "\n")
+        }
+
+        showBanner(message, style: style, copyText: copyText, duration: duration)
         if isCommandMode {
-            commandFeedback = backendReloaded ? "Config reloaded" : "Config reload failed"
+            commandFeedback = message
         }
         refreshSearchResults()
         focusActiveInput()
