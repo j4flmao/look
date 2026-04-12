@@ -344,15 +344,17 @@ fn should_mark_dirty_from_event(event: &Event) -> bool {
         return false;
     }
 
-    match event.kind {
-        EventKind::Create(_) | EventKind::Remove(_) | EventKind::Any => true,
-        EventKind::Modify(ModifyKind::Name(RenameMode::Any))
-        | EventKind::Modify(ModifyKind::Name(RenameMode::Both))
-        | EventKind::Modify(ModifyKind::Name(RenameMode::From))
-        | EventKind::Modify(ModifyKind::Name(RenameMode::To))
-        | EventKind::Modify(ModifyKind::Name(RenameMode::Other)) => true,
-        _ => false,
-    }
+    matches!(
+        event.kind,
+        EventKind::Create(_)
+            | EventKind::Remove(_)
+            | EventKind::Any
+            | EventKind::Modify(ModifyKind::Name(RenameMode::Any))
+            | EventKind::Modify(ModifyKind::Name(RenameMode::Both))
+            | EventKind::Modify(ModifyKind::Name(RenameMode::From))
+            | EventKind::Modify(ModifyKind::Name(RenameMode::To))
+            | EventKind::Modify(ModifyKind::Name(RenameMode::Other))
+    )
 }
 
 #[cfg(test)]
