@@ -186,6 +186,11 @@ final class ThemeStore: ObservableObject {
         upsertConfigLine(&lines, key: "file_scan_limit", value: String(settings.fileScanLimit))
         upsertConfigLine(
             &lines,
+            key: "lazy_indexing_enabled",
+            value: settings.lazyIndexingEnabled ? "true" : "false"
+        )
+        upsertConfigLine(
+            &lines,
             key: "file_exclude_paths",
             value: excludedFolderPaths.map(escapeCSVToken).joined(separator: ",")
         )
@@ -400,6 +405,10 @@ final class ThemeStore: ObservableObject {
             case "file_scan_limit":
                 if let parsed = parsePositiveInt(value) {
                     settings.fileScanLimit = parsed
+                }
+            case "lazy_indexing_enabled":
+                if let parsed = parseBool(value) {
+                    settings.lazyIndexingEnabled = parsed
                 }
             case "file_exclude_paths":
                 excludedFolderPaths = parseExcludedFolderPaths(value)
@@ -664,6 +673,7 @@ app_exclude_names=
 file_scan_roots=Desktop,Documents,Downloads
 file_scan_depth=4
 file_scan_limit=8000
+lazy_indexing_enabled=true
 file_exclude_paths=
 backend_log_level=error
 launch_at_login=true

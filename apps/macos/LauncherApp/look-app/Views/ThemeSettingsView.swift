@@ -447,6 +447,16 @@ struct ThemeSettingsView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
+                    Toggle(isOn: $settings.lazyIndexingEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Lazy indexing")
+                                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+                            Text("Refresh index automatically when launcher opens after file/app changes")
+                                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
+                                .foregroundStyle(themeStore.mutedTextColor())
+                        }
+                    }
+
                     HStack(alignment: .top, spacing: 10) {
                         Text("Skip Folders")
                             .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
