@@ -31,13 +31,7 @@ final class ThemeStore: ObservableObject {
     init() {
         Self.ensureDefaultConfigFileExists(at: Self.configPath())
 
-        if let data = UserDefaults.standard.data(forKey: defaultsKey),
-            let decoded = try? JSONDecoder().decode(ThemeSettings.self, from: data)
-        {
-            settings = decoded
-        } else {
-            settings = .default
-        }
+        settings = Self.loadThemeSettings(from: UserDefaults.standard.data(forKey: defaultsKey))
 
         applyThemeOverridesFromConfigFile()
         _ = applyLaunchAtLoginSetting()
@@ -698,6 +692,33 @@ ui_border_green=1.0
 ui_border_blue=1.0
 ui_border_opacity=0.12
 """
+
+    private static func loadThemeSettings(from data: Data?) -> ThemeSettings {
+        guard let data else {
+            return .default
+        }
+
+        let decoder = JSONDecoder()
+        if let decoded = try? decoder.decode(ThemeSettings.self, from: data) {
+            return decoded
+        }
+
+        guard
+            var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+            object["lazyIndexingEnabled"] == nil
+        else {
+            return .default
+        }
+
+        object["lazyIndexingEnabled"] = true
+        guard
+            let migratedData = try? JSONSerialization.data(withJSONObject: object),
+            let migrated = try? decoder.decode(ThemeSettings.self, from: migratedData)
+        else {
+            return .default
+        }
+        return migrated
+    }
 
     private func refreshBackgroundImageURL() {
         scopedBackgroundURL?.stopAccessingSecurityScopedResource()

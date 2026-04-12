@@ -301,11 +301,12 @@ fn start_background_bootstrap_refresh() {
     let _ = BOOTSTRAP_REFRESH_STARTED.get_or_init(|| {
         thread::spawn(|| {
             let started_at = Instant::now();
+            let dirty_version_snapshot = INDEX_CHANGE_VERSION.load(Ordering::Acquire);
             let path = default_db_path();
             match QueryEngine::bootstrap_sqlite(&path) {
                 Ok(()) => {
                     refresh_engine_cache();
-                    clear_index_dirty();
+                    clear_index_dirty_if_unchanged(dirty_version_snapshot);
                     let candidate_count = with_engine(|engine| engine.search("", 2000).len());
                     log_info(&format!(
                         "bootstrap refresh ok candidates={} elapsed_ms={}",
