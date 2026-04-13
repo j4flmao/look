@@ -90,13 +90,13 @@ Current built-in themes (Settings > Appearance):
 
 ![Look UI 2](assets/look-ui/2.png)
 
+![Look UI 3](assets/look-ui/3.png)
+
 ![Look UI 4](assets/look-ui/4.png)
 
 ![Look UI 5](assets/look-ui/5.png)
 
-![Look UI 7](assets/look-ui/7.png)
-
-![Look UI 9](assets/look-ui/9.png)
+![Look UI 6](assets/look-ui/6.png)
 
 ## Project status
 
