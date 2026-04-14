@@ -1,34 +1,18 @@
 use crate::config::RuntimeConfig;
 use crate::index::APP_CANDIDATE_ID_PREFIX;
+use crate::platform;
+use crate::platform::paths::{candidate_id_path_component, path_is_same_or_child};
 use look_indexing::{Candidate, CandidateKind};
-use std::env;
+use std::collections::HashSet;
 use std::fs;
 use std::sync::mpsc;
 
-const FINDER_EMBEDDED_APPS_ROOT: &str =
-    "/System/Library/CoreServices/Finder.app/Contents/Applications";
-const CORE_SERVICES_APPS_ROOT: &str = "/System/Library/CoreServices/Applications";
-
-fn ensure_required_roots(roots: &mut Vec<String>) {
-    for required in [FINDER_EMBEDDED_APPS_ROOT, CORE_SERVICES_APPS_ROOT] {
-        if !roots.iter().any(|root| root == required) {
-            roots.push(required.to_string());
-        }
-    }
-}
-
 pub fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSender<Candidate>) {
-    let mut roots = config.app_scan_roots.clone();
-    if let Ok(home) = env::var("HOME") {
-        let home_apps = format!("{home}/Applications");
-        if !roots.iter().any(|root| root == &home_apps) {
-            roots.push(home_apps);
-        }
-    }
-
-    ensure_required_roots(&mut roots);
-
-    for root in roots {
+    for root in merged_app_scan_roots(
+        &config.app_scan_roots,
+        &platform::additional_app_scan_roots(),
+        platform::required_app_scan_roots(),
+    ) {
         walk_apps(
             &root,
             config.app_scan_depth,
@@ -37,6 +21,32 @@ pub fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSender<Cand
             &config.app_exclude_names,
         );
     }
+}
+
+fn merged_app_scan_roots(
+    config_roots: &[String],
+    additional_roots: &[String],
+    required_roots: &[&str],
+) -> Vec<String> {
+    let mut out =
+        Vec::with_capacity(config_roots.len() + additional_roots.len() + required_roots.len());
+    let mut seen =
+        HashSet::with_capacity(config_roots.len() + additional_roots.len() + required_roots.len());
+    for root in config_roots.iter().chain(additional_roots.iter()) {
+        let normalized = candidate_id_path_component(root);
+        if seen.insert(normalized) {
+            out.push(root.clone());
+        }
+    }
+
+    for root in required_roots {
+        let normalized = candidate_id_path_component(root);
+        if seen.insert(normalized) {
+            out.push((*root).to_string());
+        }
+    }
+
+    out
 }
 
 fn walk_apps(
@@ -84,7 +94,10 @@ fn walk_apps(
                 continue;
             }
 
-            let key = format!("{APP_CANDIDATE_ID_PREFIX}{}", app_path_str.to_lowercase());
+            let key = format!(
+                "{APP_CANDIDATE_ID_PREFIX}{}",
+                candidate_id_path_component(app_path_str)
+            );
             let _ = tx.send(Candidate::new(
                 &key,
                 CandidateKind::App,
@@ -104,14 +117,12 @@ fn walk_apps(
 }
 
 fn should_exclude_path(path: &str, app_exclude_paths: &[String]) -> bool {
-    let normalized_path = path.trim_end_matches('/');
     app_exclude_paths.iter().any(|entry| {
-        let normalized_exclude = entry.trim().trim_end_matches('/');
+        let normalized_exclude = entry.trim();
         if normalized_exclude.is_empty() {
             return false;
         }
-        normalized_path == normalized_exclude
-            || normalized_path.starts_with(&format!("{normalized_exclude}/"))
+        path_is_same_or_child(path, normalized_exclude)
     })
 }
 
@@ -125,7 +136,7 @@ fn should_exclude_app_name(name: &str, app_exclude_names: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_required_roots, should_exclude_app_name, should_exclude_path};
+    use super::{merged_app_scan_roots, should_exclude_app_name, should_exclude_path};
 
     #[test]
     fn excludes_app_paths_by_prefix() {
@@ -161,24 +172,33 @@ mod tests {
     }
 
     #[test]
-    fn required_roots_are_appended_once() {
-        let mut roots = vec!["/Applications".to_string()];
-        ensure_required_roots(&mut roots);
-        ensure_required_roots(&mut roots);
+    #[cfg(target_os = "windows")]
+    fn exclude_path_matching_supports_windows_style_separators() {
+        let excludes = vec!["C:\\Users\\demo\\Applications".to_string()];
+        assert!(should_exclude_path(
+            "C:/Users/demo/Applications/Utility.app",
+            &excludes
+        ));
+    }
 
-        assert!(
-            roots
-                .iter()
-                .any(|root| root == "/System/Library/CoreServices/Applications")
+    #[test]
+    fn merged_roots_preserve_order_and_deduplicate() {
+        let roots = vec!["/Applications".to_string()];
+        let additional = vec![
+            "/Users/demo/Applications".to_string(),
+            "/Applications/".to_string(),
+        ];
+
+        let required = vec!["/System/Library/CoreServices/Applications", "/Applications"];
+
+        let merged = merged_app_scan_roots(&roots, &additional, &required);
+        assert_eq!(
+            merged,
+            vec![
+                "/Applications".to_string(),
+                "/Users/demo/Applications".to_string(),
+                "/System/Library/CoreServices/Applications".to_string()
+            ]
         );
-        assert!(roots
-            .iter()
-            .any(|root| root == "/System/Library/CoreServices/Finder.app/Contents/Applications"));
-
-        let core_services_count = roots
-            .iter()
-            .filter(|root| *root == "/System/Library/CoreServices/Applications")
-            .count();
-        assert_eq!(core_services_count, 1);
     }
 }
