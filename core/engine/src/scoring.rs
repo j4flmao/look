@@ -87,10 +87,13 @@ pub(crate) fn kind_bias(candidate: &Candidate) -> i64 {
     }
 }
 
-pub(crate) fn query_kind_penalty(query: &str, candidate: &Candidate) -> i64 {
-    let looks_like_settings_query = looks_like_settings_query(query);
-
-    if looks_like_settings_query {
+pub(crate) fn query_kind_penalty_with_settings_flag(
+    settings_query: bool,
+    candidate: &Candidate,
+) -> i64 {
+    // Callers can precompute `settings_query` once per search query to avoid
+    // repeating hint detection for every candidate in the scoring loop.
+    if settings_query {
         match candidate.kind {
             CandidateKind::App => {
                 if is_system_settings_candidate(candidate) {
@@ -109,15 +112,22 @@ pub(crate) fn query_kind_penalty(query: &str, candidate: &Candidate) -> i64 {
 }
 
 pub(crate) fn looks_like_settings_query(query: &str) -> bool {
-    query.split_whitespace().any(|term| {
-        if term.is_empty() {
-            return false;
-        }
+    // `query` comes from normalized input in the search path, so we avoid
+    // allocating a lowercased copy here and match hints directly.
+    if QUERY_SETTINGS_HINTS.iter().any(|hint| query.contains(hint)) {
+        return true;
+    }
 
-        QUERY_SETTINGS_HINTS
-            .iter()
-            .any(|hint| term.contains(hint) || (term.len() >= 3 && hint.starts_with(term)))
-    })
+    for word in query.split_whitespace() {
+        if word.len() >= 3
+            && QUERY_SETTINGS_HINTS
+                .iter()
+                .any(|hint| hint.starts_with(word))
+        {
+            return true;
+        }
+    }
+    false
 }
 
 pub(crate) fn is_system_settings_candidate(candidate: &Candidate) -> bool {
@@ -370,9 +380,9 @@ mod tests {
         let regular_app = app("Safari", "/Applications/Safari.app");
         let folder = folder("network", "/Users/test/network");
 
-        let settings_score = query_kind_penalty("network", &settings_app);
-        let app_score = query_kind_penalty("network", &regular_app);
-        let folder_score = query_kind_penalty("network", &folder);
+        let settings_score = query_kind_penalty_with_settings_flag(true, &settings_app);
+        let app_score = query_kind_penalty_with_settings_flag(true, &regular_app);
+        let folder_score = query_kind_penalty_with_settings_flag(true, &folder);
 
         assert!(settings_score > app_score);
         assert!(app_score > folder_score);
@@ -390,7 +400,54 @@ mod tests {
             last_used_at_unix_s: None,
         };
 
-        assert!(query_kind_penalty("ingo", &settings_app) < 0);
+        assert!(query_kind_penalty_with_settings_flag(false, &settings_app) < 0);
+    }
+
+    #[test]
+    fn query_kind_penalty_precomputed_flag_matches_detected_query_kind() {
+        let settings_app = Candidate {
+            id: "setting:network".into(),
+            kind: CandidateKind::App,
+            title: "Network".into(),
+            subtitle: Some("System Settings network".into()),
+            path: "x-apple.systempreferences:com.apple.preference.network".into(),
+            use_count: 0,
+            last_used_at_unix_s: None,
+        };
+        let regular_app = app("Safari", "/Applications/Safari.app");
+        let regular_file = file("notes.txt", "/Users/test/notes.txt");
+
+        let settings_like = "network";
+        let non_settings_like = "ingo";
+
+        assert_eq!(
+            query_kind_penalty_with_settings_flag(
+                looks_like_settings_query(settings_like),
+                &settings_app
+            ),
+            query_kind_penalty_with_settings_flag(true, &settings_app)
+        );
+        assert_eq!(
+            query_kind_penalty_with_settings_flag(
+                looks_like_settings_query(settings_like),
+                &regular_app
+            ),
+            query_kind_penalty_with_settings_flag(true, &regular_app)
+        );
+        assert_eq!(
+            query_kind_penalty_with_settings_flag(
+                looks_like_settings_query(non_settings_like),
+                &settings_app,
+            ),
+            query_kind_penalty_with_settings_flag(false, &settings_app)
+        );
+        assert_eq!(
+            query_kind_penalty_with_settings_flag(
+                looks_like_settings_query(non_settings_like),
+                &regular_file,
+            ),
+            query_kind_penalty_with_settings_flag(false, &regular_file)
+        );
     }
 
     #[test]
