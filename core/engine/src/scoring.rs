@@ -109,15 +109,23 @@ pub(crate) fn query_kind_penalty(query: &str, candidate: &Candidate) -> i64 {
 }
 
 pub(crate) fn looks_like_settings_query(query: &str) -> bool {
-    query.split_whitespace().any(|term| {
-        if term.is_empty() {
-            return false;
+    let query_lower = query.to_ascii_lowercase();
+    if QUERY_SETTINGS_HINTS
+        .iter()
+        .any(|hint| query_lower.contains(hint))
+    {
+        return true;
+    }
+    for word in query_lower.split_whitespace() {
+        if word.len() >= 3
+            && QUERY_SETTINGS_HINTS
+                .iter()
+                .any(|hint| hint.starts_with(word))
+        {
+            return true;
         }
-
-        QUERY_SETTINGS_HINTS
-            .iter()
-            .any(|hint| term.contains(hint) || (term.len() >= 3 && hint.starts_with(term)))
-    })
+    }
+    false
 }
 
 pub(crate) fn is_system_settings_candidate(candidate: &Candidate) -> bool {

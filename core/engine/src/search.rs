@@ -104,11 +104,10 @@ impl QueryEngine {
             .unwrap_or(0);
 
         let mut top = BinaryHeap::new();
-        for candidate in self
-            .candidates
-            .iter()
-            .filter(|candidate| Self::kind_matches(candidate, kind_filter))
-        {
+        for candidate in &self.candidates {
+            if !Self::kind_matches(candidate, kind_filter) {
+                continue;
+            }
             let score = default_browse_score(&candidate.candidate, now_unix_s);
             push_top_k(
                 &mut top,
@@ -137,11 +136,10 @@ impl QueryEngine {
         };
 
         let mut top = BinaryHeap::new();
-        for candidate in self
-            .candidates
-            .iter()
-            .filter(|candidate| Self::kind_matches(candidate, kind_filter))
-        {
+        for candidate in &self.candidates {
+            if !Self::kind_matches(candidate, kind_filter) {
+                continue;
+            }
             let title_match = regex.is_match(&candidate.candidate.title);
             let path_match = regex.is_match(&candidate.candidate.path);
             let subtitle_match = candidate
@@ -188,11 +186,10 @@ impl QueryEngine {
         let pool_limit = (limit.saturating_mul(RERANK_POOL_MULTIPLIER)).max(RERANK_TOP_N);
         let alias_terms = self.alias_terms_for_query(normalized_query, kind_filter);
 
-        for candidate in self
-            .candidates
-            .iter()
-            .filter(|candidate| Self::kind_matches(candidate, kind_filter))
-        {
+        for candidate in &self.candidates {
+            if !Self::kind_matches(candidate, kind_filter) {
+                continue;
+            }
             // Use precomputed normalized strings from IndexedCandidate.
             // This avoids normalize_for_search allocations in the hot loop.
             let title_score = fuzzy_score_prepared(&prepared_query, &candidate.title_search);
