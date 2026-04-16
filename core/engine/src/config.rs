@@ -438,6 +438,19 @@ fn default_file_scan_roots() -> Vec<String> {
         .collect()
 }
 
+#[cfg(target_os = "windows")]
+fn user_home_dir() -> Option<String> {
+    env::var("USERPROFILE")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            env::var("HOME")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+}
+
+#[cfg(not(target_os = "windows"))]
 fn user_home_dir() -> Option<String> {
     env::var("HOME")
         .ok()
@@ -656,6 +669,17 @@ mod tests {
         let home = Some("C:\\Users\\demo");
         assert_eq!(expand_path("~/Projects", home), "C:\\Users\\demo\\Projects");
         assert_eq!(expand_path("Documents", home), "C:\\Users\\demo\\Documents");
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn user_home_dir_prefers_userprofile_over_home_on_windows() {
+        unsafe {
+            env::set_var("HOME", "/c/Users/posix-home");
+            env::set_var("USERPROFILE", "C:/Users/win-home");
+        }
+
+        assert_eq!(user_home_dir().as_deref(), Some("C:/Users/win-home"));
     }
 
     #[test]
