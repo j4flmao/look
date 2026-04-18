@@ -9,6 +9,9 @@ enum SingleInstanceLockResult {
 
 enum SingleInstanceLock {
     static let defaultPollIntervalMicros: useconds_t = 50_000
+    // FNV-1a 64-bit constants used for stable lock-file naming.
+    private static let fnv1a64OffsetBasis: UInt64 = 1_469_598_103_934_665_603
+    private static let fnv1a64Prime: UInt64 = 1_099_511_628_211
 
     static func lockPath(for bundlePath: String, tempDirectory: String = NSTemporaryDirectory()) -> String {
         let hash = stablePathHash(bundlePath)
@@ -17,10 +20,10 @@ enum SingleInstanceLock {
     }
 
     static func stablePathHash(_ value: String) -> UInt64 {
-        var hash: UInt64 = 1469598103934665603
+        var hash = fnv1a64OffsetBasis
         for byte in value.utf8 {
             hash ^= UInt64(byte)
-            hash &*= 1099511628211
+            hash &*= fnv1a64Prime
         }
         return hash
     }
