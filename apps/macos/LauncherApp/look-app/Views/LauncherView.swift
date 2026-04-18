@@ -30,6 +30,7 @@ struct LauncherView: View {
 
     @EnvironmentObject private var appUIState: AppUIState
     @EnvironmentObject private var themeStore: ThemeStore
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var clipboardStore = ClipboardHistoryStore()
 
     @State private var query = ""
@@ -933,23 +934,32 @@ struct LauncherView: View {
     }
 
     private func toggleWindowVisibility() {
-        guard let window = launcherWindow() else { return }
-
-        if window.isVisible && NSApplication.shared.isActive {
+        if let window = launcherWindow(), window.isVisible && NSApplication.shared.isActive {
             hideLauncherWindow()
             return
         }
 
         _ = bridge.requestIndexRefresh()
+        NSApplication.shared.unhide(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-        activateLauncherModeAndFocus()
+
+        if let window = launcherWindow() {
+            window.makeKeyAndOrderFront(nil)
+            activateLauncherModeAndFocus()
+            return
+        }
+
+        openWindow(id: "main")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            launcherWindow()?.makeKeyAndOrderFront(nil)
+            activateLauncherModeAndFocus()
+        }
     }
 
     private func hideLauncherWindow() {
         guard let window = launcherWindow() else { return }
         window.orderOut(nil)
-        NSApp.hide(nil)
         refreshClipboardMonitoringMode()
     }
 
@@ -1441,11 +1451,6 @@ struct LauncherView: View {
         .onReceive(
             NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
         ) { _ in
-            // Keep focus-loss dismissal here so launcher hide behavior remains
-            // centralized in the view lifecycle (AppDelegate no longer mirrors it).
-            if !appUIState.showsThemeSettings {
-                hideLauncherWindow()
-            }
             refreshClipboardMonitoringMode()
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookReloadConfigRequested)) { _ in

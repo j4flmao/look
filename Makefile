@@ -70,6 +70,7 @@ app-open: app-build app-ensure-bundle
 
 app-install-dev: app-build app-ensure-bundle
 	@echo "Installing side-by-side dev app: $(DEV_APP_INSTALL_BUNDLE)"
+	@osascript -e 'tell application id "$(DEV_APP_ID)" to quit' >/dev/null 2>&1 || true
 	@rm -rf "$(DEV_APP_INSTALL_BUNDLE)"
 	@cp -R "$(APP_BUNDLE)" "$(DEV_APP_INSTALL_BUNDLE)"
 	@plutil -replace CFBundleDisplayName -string "$(DEV_APP_NAME)" "$(DEV_APP_INSTALL_BUNDLE)/Contents/Info.plist"
@@ -79,7 +80,7 @@ app-install-dev: app-build app-ensure-bundle
 	@"$(LSREGISTER)" -f "$(DEV_APP_INSTALL_BUNDLE)" >/dev/null
 	@echo "Installed $(DEV_APP_NAME) with bundle id $(DEV_APP_ID)"
 
-app-run-dev: app-install-dev
+app-run-dev: app-install-dev app-stop
 	@echo "Opening side-by-side dev app with config: $(DEV_CONFIG_PATH)"
 	@$(DEV_OPEN_ENV) open -a "$(DEV_APP_INSTALL_BUNDLE)"
 

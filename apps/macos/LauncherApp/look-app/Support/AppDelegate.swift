@@ -2,8 +2,11 @@ import AppKit
 import Darwin
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let hotKeyManager = GlobalHotKeyManager()
+
     // Grace period allows macOS "Quit & Reopen" handoff to release the previous process lock.
     private static let relaunchGracePeriodSeconds: TimeInterval = 0.8
+    private static let contentionRetrySeconds: TimeInterval = 0.25
     private static let lockPollIntervalMicros: useconds_t = 50_000
     private static var singletonLockFD: CInt = -1
 
@@ -18,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        hotKeyManager.registerToggleHotKey()
         NSApp.setActivationPolicy(.accessory)
     }
 
@@ -29,8 +33,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let lockResult = acquireSingletonLock(lockPath: lockPath, timeoutSeconds: Self.relaunchGracePeriodSeconds)
 
         if case .heldByOtherInstance = lockResult {
-            _ = checkAndActivateDuplicateInstance(currentBundlePath: currentBundlePath)
-            return true
+            if checkAndActivateDuplicateInstance(currentBundlePath: currentBundlePath) {
+                return true
+            }
+
+            let retryResult = acquireSingletonLock(lockPath: lockPath, timeoutSeconds: Self.contentionRetrySeconds)
+            if case .heldByOtherInstance = retryResult {
+                return checkAndActivateDuplicateInstance(currentBundlePath: currentBundlePath)
+            }
         }
 
         // Always check for other running instances to handle:
@@ -85,23 +95,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if let window = sender.windows.first {
+        if let window = collapseToSingleLauncherWindow(preferred: sender.windows.first(where: { $0.isVisible })) {
             sender.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
         }
         NotificationCenter.default.post(name: .lookActivateLauncherRequested, object: nil)
-        return true
+        // We handled reopen ourselves; prevent AppKit from creating another window.
+        return false
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
         DispatchQueue.main.async {
             if let app = notification.object as? NSApplication,
-                let window = app.windows.first
+                let window = app.windows.first(where: { $0.isVisible }) ?? app.windows.first
             {
                 app.activate(ignoringOtherApps: true)
                 window.makeKeyAndOrderFront(nil)
             }
             NotificationCenter.default.post(name: .lookActivateLauncherRequested, object: nil)
         }
+    }
+
+    @discardableResult
+    private func collapseToSingleLauncherWindow(preferred: NSWindow? = nil) -> NSWindow? {
+        let windows = NSApplication.shared.windows
+        guard !windows.isEmpty else { return nil }
+
+        let primary = preferred ?? windows.first(where: { $0.isVisible }) ?? windows.first
+        guard let primary else { return nil }
+
+        for window in windows where window !== primary {
+            window.orderOut(nil)
+            window.close()
+        }
+
+        return primary
     }
 }

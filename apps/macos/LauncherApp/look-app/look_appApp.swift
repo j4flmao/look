@@ -14,15 +14,12 @@ struct look_appApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appUIState = AppUIState()
     @StateObject private var themeStore = ThemeStore()
-    private let hotKeyManager = GlobalHotKeyManager()
 
     init() {
         if let exitCode = handleCLIFlags() {
             fflush(stdout)
             exit(exitCode)
         }
-
-        hotKeyManager.registerToggleHotKey()
     }
 
     private func handleCLIFlags() -> Int32? {
@@ -124,7 +121,7 @@ struct look_appApp: App {
     }
 
     var body: some Scene {
-        Window("Look", id: "main") {
+        WindowGroup(id: "main") {
             ContentView()
                 .frame(minWidth: 620, minHeight: 600)
                 .background(WindowConfigurator())
