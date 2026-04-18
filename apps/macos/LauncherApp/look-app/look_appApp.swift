@@ -124,7 +124,7 @@ struct look_appApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        Window("Look", id: "main") {
             ContentView()
                 .frame(minWidth: 620, minHeight: 600)
                 .background(WindowConfigurator())
@@ -133,6 +133,8 @@ struct look_appApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(replacing: .newItem) {}
+
             CommandGroup(replacing: .appTermination) {
                 Button("Hide Look") {
                     NotificationCenter.default.post(name: .lookHideLauncherRequested, object: nil)

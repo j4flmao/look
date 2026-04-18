@@ -72,6 +72,17 @@ struct LauncherView: View {
             return true
         }
 
+        if let bundleIdentifier = Bundle.main.bundleIdentifier,
+            bundleIdentifier.caseInsensitiveCompare("noah-code.Look") != .orderedSame
+        {
+            return true
+        }
+
+        let bundlePath = Bundle.main.bundleURL.resolvingSymlinksInPath().path.lowercased()
+        if bundlePath.contains("/look dev.app") {
+            return true
+        }
+
         return false
     }()
 

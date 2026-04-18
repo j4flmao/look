@@ -7,26 +7,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let lockPollIntervalMicros: useconds_t = 50_000
     private static var singletonLockFD: CInt = -1
 
-    private static func singletonLockPath(for bundlePath: String) -> String {
-        let hash = stablePathHash(bundlePath)
-        let fileName = "look-single-instance-\(hash).lock"
-        return (NSTemporaryDirectory() as NSString).appendingPathComponent(fileName)
-    }
-
-    private static func stablePathHash(_ value: String) -> UInt64 {
-        var hash: UInt64 = 1469598103934665603
-        for byte in value.utf8 {
-            hash ^= UInt64(byte)
-            hash &*= 1099511628211
-        }
-        return hash
-    }
-
     deinit {
-        if Self.singletonLockFD >= 0 {
-            close(Self.singletonLockFD)
-            Self.singletonLockFD = -1
-        }
+        SingleInstanceLock.release(Self.singletonLockFD)
+        Self.singletonLockFD = -1
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -40,14 +23,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func shouldTerminateDuplicateInstance() -> Bool {
         let currentBundlePath = Bundle.main.bundleURL.resolvingSymlinksInPath().path
-        let lockPath = Self.singletonLockPath(for: currentBundlePath)
+        let lockPath = SingleInstanceLock.lockPath(for: currentBundlePath)
 
         // Try to acquire singleton lock with grace period for "Quit & Reopen" handoff
-        _ = acquireSingletonLock(lockPath: lockPath, timeoutSeconds: Self.relaunchGracePeriodSeconds)
+        let lockResult = acquireSingletonLock(lockPath: lockPath, timeoutSeconds: Self.relaunchGracePeriodSeconds)
+
+        if case .heldByOtherInstance = lockResult {
+            _ = checkAndActivateDuplicateInstance(currentBundlePath: currentBundlePath)
+            return true
+        }
 
         // Always check for other running instances to handle:
         // 1. Mixed-version scenarios (older builds not using lock protocol)
-        // 2. Lock acquisition failures (fallback to process-based detection)
+        // 2. Lock subsystem unavailable (fallback to process-based detection)
         return checkAndActivateDuplicateInstance(currentBundlePath: currentBundlePath)
     }
 
@@ -78,37 +66,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    private func acquireSingletonLock(lockPath: String, timeoutSeconds: TimeInterval) -> Bool {
+    private func acquireSingletonLock(lockPath: String, timeoutSeconds: TimeInterval) -> SingleInstanceLockResult {
         if Self.singletonLockFD >= 0 {
-            return true
+            return .acquired(Self.singletonLockFD)
         }
 
-        let fd = open(lockPath, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
-        // If we can't create the lock file, return false to trigger fallback process detection
-        guard fd >= 0 else {
-            return false
+        let lockResult = SingleInstanceLock.acquire(
+            lockPath: lockPath,
+            timeoutSeconds: timeoutSeconds,
+            pollIntervalMicros: Self.lockPollIntervalMicros
+        )
+
+        if case .acquired(let fd) = lockResult {
+            Self.singletonLockFD = fd
         }
 
-        let deadline = Date().addingTimeInterval(timeoutSeconds)
-        while true {
-            if flock(fd, LOCK_EX | LOCK_NB) == 0 {
-                Self.singletonLockFD = fd
-                return true
-            }
-
-            if errno != EWOULDBLOCK && errno != EAGAIN {
-                break
-            }
-
-            if Date() >= deadline {
-                break
-            }
-
-            usleep(Self.lockPollIntervalMicros)
-        }
-
-        close(fd)
-        return false
+        return lockResult
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

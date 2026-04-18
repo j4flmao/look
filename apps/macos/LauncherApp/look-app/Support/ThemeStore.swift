@@ -470,6 +470,18 @@ final class ThemeStore: ObservableObject {
         }
 
         let home = env["HOME"] ?? NSHomeDirectory()
+
+        if let bundleIdentifier = Bundle.main.bundleIdentifier,
+            bundleIdentifier.caseInsensitiveCompare("noah-code.Look") != .orderedSame
+        {
+            return URL(fileURLWithPath: home).appendingPathComponent(".look.dev.config")
+        }
+
+        let bundlePath = Bundle.main.bundleURL.resolvingSymlinksInPath().path.lowercased()
+        if bundlePath.contains("/look dev.app") {
+            return URL(fileURLWithPath: home).appendingPathComponent(".look.dev.config")
+        }
+
         return URL(fileURLWithPath: home).appendingPathComponent(".look.config")
     }
 
