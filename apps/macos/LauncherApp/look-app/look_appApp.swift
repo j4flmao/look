@@ -20,6 +20,8 @@ struct look_appApp: App {
             fflush(stdout)
             exit(exitCode)
         }
+
+        ConfigPathResolver.applyDefaultConfigEnvironmentIfNeeded()
     }
 
     private func handleCLIFlags() -> Int32? {

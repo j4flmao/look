@@ -462,27 +462,7 @@ final class ThemeStore: ObservableObject {
     }
 
     private static func configPath() -> URL {
-        let env = ProcessInfo.processInfo.environment
-        if let custom = env["LOOK_CONFIG_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-            !custom.isEmpty
-        {
-            return URL(fileURLWithPath: custom)
-        }
-
-        let home = env["HOME"] ?? NSHomeDirectory()
-
-        if let bundleIdentifier = Bundle.main.bundleIdentifier,
-            bundleIdentifier.caseInsensitiveCompare("noah-code.Look") != .orderedSame
-        {
-            return URL(fileURLWithPath: home).appendingPathComponent(".look.dev.config")
-        }
-
-        let bundlePath = Bundle.main.bundleURL.resolvingSymlinksInPath().path.lowercased()
-        if bundlePath.contains("/look dev.app") {
-            return URL(fileURLWithPath: home).appendingPathComponent(".look.dev.config")
-        }
-
-        return URL(fileURLWithPath: home).appendingPathComponent(".look.config")
+        URL(fileURLWithPath: ConfigPathResolver.resolvedPath())
     }
 
     private static func ensureDefaultConfigFileExists(at path: URL) {
