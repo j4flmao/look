@@ -30,6 +30,10 @@ struct IndexedCandidate {
     title_search: String,
     subtitle_search: Option<String>,
     path_search: String,
+    // Precomputed per-candidate constants
+    is_system_settings: bool,
+    kind_bias: i64,
+    path_depth_penalty: i64,
 }
 
 #[derive(Default)]
@@ -193,12 +197,18 @@ impl IndexedCandidate {
             .as_ref()
             .map(|subtitle| normalize_for_search(subtitle));
         let path_search = normalize_for_search(&candidate.path);
+        let is_system_settings = scoring::is_system_settings_candidate(&candidate);
+        let kb = scoring::kind_bias(&candidate);
+        let pdp = scoring::path_depth_penalty(&candidate);
 
         Self {
             candidate,
             title_search,
             subtitle_search,
             path_search,
+            is_system_settings,
+            kind_bias: kb,
+            path_depth_penalty: pdp,
         }
     }
 }

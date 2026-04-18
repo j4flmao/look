@@ -29,15 +29,13 @@ pub(crate) fn contains_match_score(
         return Some(SCORE_SUBTITLE_CONTAINS);
     }
 
-    let terms: Vec<&str> = query.split_whitespace().collect();
-    if terms.is_empty() {
-        return None;
-    }
+    let mut has_terms = false;
+    let all_match = query.split_whitespace().all(|t| {
+        has_terms = true;
+        title.contains(t) || subtitle.is_some_and(|sub| sub.contains(t))
+    });
 
-    if terms
-        .iter()
-        .all(|t| title.contains(t) || subtitle.is_some_and(|sub| sub.contains(t)))
-    {
+    if has_terms && all_match {
         return Some(SCORE_TOKEN_ALL_MATCH);
     }
 
@@ -185,6 +183,7 @@ fn browse_recency_boost(age_hours: i64) -> i64 {
 
 #[derive(Clone, Debug)]
 pub(crate) struct ScoredMatch {
+    pub(crate) candidate_idx: usize,
     candidate: Candidate,
     score: i64,
 }
@@ -198,8 +197,12 @@ impl PartialEq for ScoredMatch {
 impl Eq for ScoredMatch {}
 
 impl ScoredMatch {
-    pub(crate) fn new(candidate: Candidate, score: i64) -> Self {
-        Self { candidate, score }
+    pub(crate) fn new(candidate: Candidate, score: i64, candidate_idx: usize) -> Self {
+        Self {
+            candidate_idx,
+            candidate,
+            score,
+        }
     }
 }
 
@@ -233,10 +236,10 @@ pub(crate) fn push_top_k(heap: &mut BinaryHeap<ScoredMatch>, item: ScoredMatch, 
     }
 }
 
-pub(crate) fn finalize_top_k(heap: BinaryHeap<ScoredMatch>) -> Vec<(Candidate, i64)> {
-    let mut out: Vec<(Candidate, i64)> = heap
+pub(crate) fn finalize_top_k(heap: BinaryHeap<ScoredMatch>) -> Vec<(Candidate, i64, usize)> {
+    let mut out: Vec<(Candidate, i64, usize)> = heap
         .into_iter()
-        .map(|entry| (entry.candidate, entry.score))
+        .map(|entry| (entry.candidate, entry.score, entry.candidate_idx))
         .collect();
     out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.title.cmp(&b.0.title)));
     out
@@ -357,7 +360,7 @@ mod tests {
         let mut heap = BinaryHeap::new();
         for i in 0..10 {
             let c = app(&format!("App{i}"), "/test");
-            push_top_k(&mut heap, ScoredMatch::new(c, i * 100), 3);
+            push_top_k(&mut heap, ScoredMatch::new(c, i * 100, i as usize), 3);
         }
         assert_eq!(heap.len(), 3);
 
