@@ -23,6 +23,7 @@ const INDEX_UPSERT_CHUNK_SIZE: usize = 512;
 const USAGE_RETENTION_DAYS: i64 = 90;
 const MAX_USAGE_EVENT_ROWS: usize = 50_000;
 
+#[allow(dead_code)]
 struct IndexedCandidate {
     candidate: Candidate,
     // Search-normalized fields are precomputed once at load time so the query loop
