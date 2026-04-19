@@ -1,9 +1,11 @@
 use crate::QueryEngine;
 use crate::config::*;
+use crate::normalize::normalize_for_search;
 use crate::query::ParsedQuery;
 use crate::scoring::{
     ScoredMatch, contains_match_score, default_browse_score, finalize_top_k,
-    looks_like_settings_query, path_match_score, push_top_k, query_kind_penalty_with_settings_flag,
+    is_system_settings_candidate, kind_bias, looks_like_settings_query, path_depth_penalty,
+    path_match_score, push_top_k, query_kind_penalty_with_settings_flag,
 };
 use look_indexing::{Candidate, CandidateKind};
 use look_matching::{fuzzy_quality_bonus_prepared, fuzzy_score_prepared, prepare_query};
@@ -19,12 +21,9 @@ const REGEX_SIZE_LIMIT_BYTES: usize = 1024 * 1024;
 const SCORE_ALIAS_TITLE_MATCH: i64 = 1_520;
 const SCORE_ALIAS_SUBTITLE_MATCH: i64 = 1_260;
 
-fn top_limit(ranked: Vec<(Candidate, i64, usize)>, limit: usize) -> Vec<(Candidate, i64)> {
+fn top_limit(mut ranked: Vec<(Candidate, i64)>, limit: usize) -> Vec<(Candidate, i64)> {
+    ranked.truncate(limit);
     ranked
-        .into_iter()
-        .take(limit)
-        .map(|(c, s, _)| (c, s))
-        .collect()
 }
 
 impl QueryEngine {
@@ -106,22 +105,19 @@ impl QueryEngine {
             .unwrap_or(0);
 
         let mut top = BinaryHeap::new();
-        for (idx, candidate) in self.candidates.iter().enumerate() {
+        for candidate in &self.candidates {
             if !Self::kind_matches(candidate, kind_filter) {
                 continue;
             }
             let score = default_browse_score(&candidate.candidate, now_unix_s);
             push_top_k(
                 &mut top,
-                ScoredMatch::new(candidate.candidate.clone(), score, idx),
+                ScoredMatch::new(candidate.candidate.clone(), score),
                 limit,
             );
         }
 
         finalize_top_k(top)
-            .into_iter()
-            .map(|(c, s, _)| (c, s))
-            .collect()
     }
 
     fn search_regex_query(
@@ -142,7 +138,7 @@ impl QueryEngine {
         };
 
         let mut top = BinaryHeap::new();
-        for (idx, candidate) in self.candidates.iter().enumerate() {
+        for candidate in &self.candidates {
             if !Self::kind_matches(candidate, kind_filter) {
                 continue;
             }
@@ -166,18 +162,17 @@ impl QueryEngine {
                 _ => SCORE_REGEX_PATH_ONLY,
             };
 
-            let final_score = regex_score + candidate.kind_bias + candidate.path_depth_penalty;
+            let final_score = regex_score
+                + kind_bias(&candidate.candidate)
+                + path_depth_penalty(&candidate.candidate);
             push_top_k(
                 &mut top,
-                ScoredMatch::new(candidate.candidate.clone(), final_score, idx),
+                ScoredMatch::new(candidate.candidate.clone(), final_score),
                 limit,
             );
         }
 
         finalize_top_k(top)
-            .into_iter()
-            .map(|(c, s, _)| (c, s))
-            .collect()
     }
 
     fn search_text_query(
@@ -195,18 +190,19 @@ impl QueryEngine {
         let pool_limit = (limit.saturating_mul(RERANK_POOL_MULTIPLIER)).max(RERANK_TOP_N);
         let alias_terms = self.alias_terms_for_query(normalized_query, kind_filter);
 
-        for (idx, candidate) in self.candidates.iter().enumerate() {
+        for candidate in &self.candidates {
             if !Self::kind_matches(candidate, kind_filter) {
                 continue;
             }
             // Use precomputed normalized strings from IndexedCandidate.
             // This avoids normalize_for_search allocations in the hot loop.
             let title_score = fuzzy_score_prepared(&prepared_query, &candidate.title_search);
-            let subtitle_search = if !settings_query && candidate.is_system_settings {
-                None
-            } else {
-                candidate.subtitle_search.as_deref()
-            };
+            let subtitle_search =
+                if !settings_query && is_system_settings_candidate(&candidate.candidate) {
+                    None
+                } else {
+                    candidate.subtitle_search.as_deref()
+                };
             let subtitle_score = subtitle_search
                 .as_ref()
                 .and_then(|subtitle| fuzzy_score_prepared(&prepared_query, subtitle))
@@ -218,7 +214,7 @@ impl QueryEngine {
             } else {
                 None
             };
-            let alias_subtitle_search = if candidate.is_system_settings {
+            let alias_subtitle_search = if is_system_settings_candidate(&candidate.candidate) {
                 candidate.subtitle_search.as_deref()
             } else {
                 subtitle_search
@@ -251,20 +247,20 @@ impl QueryEngine {
                 normalized_query,
                 &candidate.candidate,
                 &candidate.title_search,
-            ) + candidate.kind_bias
+            ) + kind_bias(&candidate.candidate)
                 // Reuse precomputed query kind to keep this hot loop allocation-free.
                 + query_kind_penalty_with_settings_flag(settings_query, &candidate.candidate)
-                + candidate.path_depth_penalty;
+                + path_depth_penalty(&candidate.candidate);
             push_top_k(
                 &mut top,
-                ScoredMatch::new(candidate.candidate.clone(), final_score, idx),
+                ScoredMatch::new(candidate.candidate.clone(), final_score),
                 pool_limit,
             );
         }
 
         let mut ranked = finalize_top_k(top);
 
-        if prepared_query.len() < RERANK_MIN_QUERY_CHARS {
+        if normalized_query.chars().count() < RERANK_MIN_QUERY_CHARS {
             return top_limit(ranked, limit);
         }
 
@@ -274,10 +270,8 @@ impl QueryEngine {
         // 2) quality rerank only on top-N candidates to keep latency predictable
         let rerank_count = ranked.len().min(RERANK_TOP_N);
         for entry in ranked.iter_mut().take(rerank_count) {
-            entry.1 += fuzzy_quality_bonus_prepared(
-                &prepared_query,
-                &self.candidates[entry.2].title_search,
-            );
+            let rerank_title = normalize_for_search(&entry.0.title);
+            entry.1 += fuzzy_quality_bonus_prepared(&prepared_query, &rerank_title);
         }
 
         ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.title.cmp(&b.0.title)));
