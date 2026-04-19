@@ -23,10 +23,7 @@ const SCORE_ALIAS_SUBTITLE_MATCH: i64 = 1_260;
 
 fn top_limit(mut ranked: Vec<(Candidate, i64, usize)>, limit: usize) -> Vec<(Candidate, i64)> {
     ranked.truncate(limit);
-    ranked
-        .into_iter()
-        .map(|(c, s, _)| (c, s))
-        .collect()
+    ranked.into_iter().map(|(c, s, _)| (c, s)).collect()
 }
 
 impl QueryEngine {
@@ -100,7 +97,7 @@ impl QueryEngine {
         &self,
         kind_filter: Option<&CandidateKind>,
         limit: usize,
-) -> Vec<(Candidate, i64)> {
+    ) -> Vec<(Candidate, i64)> {
         // Empty-query mode is a browse ranking pass: usage + recency, no text matching.
         let now_unix_s = SystemTime::now()
             .duration_since(UNIX_EPOCH)
