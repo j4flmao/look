@@ -271,6 +271,9 @@ mod tests {
 
         assert!(look_reload_config());
 
+        crate::state::stop_index_watchers_for_test();
+        thread::sleep(Duration::from_millis(50));
+
         crate::state::mark_index_dirty();
         let mut refresh_triggered = false;
         for _ in 0..20 {
@@ -284,6 +287,8 @@ mod tests {
             refresh_triggered,
             "expected refresh request to acquire slot at least once"
         );
+
+        thread::sleep(Duration::from_millis(100));
 
         let text = CString::new("hello").expect("text cstring");
         let bad_lang = CString::new("invalid_lang!").expect("bad lang cstring");
@@ -309,6 +314,7 @@ mod tests {
             Some("empty_text")
         );
 
+        crate::state::stop_index_watchers_for_test();
         let _ = fs::remove_file(&db_path);
         let _ = fs::remove_file(&config_path);
     }

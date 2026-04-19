@@ -102,6 +102,11 @@ pub(crate) fn clear_index_dirty() {
     INDEX_CLEARED_VERSION.store(current, Ordering::Release);
 }
 
+#[allow(dead_code)]
+pub(crate) fn stop_index_watchers_for_test() {
+    stop_index_watchers();
+}
+
 pub(crate) fn restart_index_watchers() {
     stop_index_watchers();
 
