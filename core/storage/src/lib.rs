@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const SEARCH_ENGINE_DUCKDUCKGO: &str = "duckduckgo";
 const SEARCH_ENGINE_GOOGLE: &str = "google";
 const SEARCH_ENGINE_BING: &str = "bing";
+const MAX_CANDIDATE_PREALLOC: usize = 10_000;
 
 const SETTINGS_KEY_WEB_SEARCH_ENABLED: &str = "web_search_enabled";
 const SETTINGS_KEY_WEB_SEARCH_ENGINE: &str = "web_search_engine";
@@ -183,7 +184,7 @@ impl SqliteStore {
         };
 
         let mut out = match limit {
-            Some(max) => Vec::with_capacity(max),
+            Some(max) => Vec::with_capacity(max.min(MAX_CANDIDATE_PREALLOC)),
             None => Vec::new(),
         };
         while let Some(row) = rows.next()? {

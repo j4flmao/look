@@ -21,9 +21,9 @@ const REGEX_SIZE_LIMIT_BYTES: usize = 1024 * 1024;
 const SCORE_ALIAS_TITLE_MATCH: i64 = 1_520;
 const SCORE_ALIAS_SUBTITLE_MATCH: i64 = 1_260;
 
-fn top_limit(mut ranked: Vec<(Candidate, i64, usize)>, limit: usize) -> Vec<(Candidate, i64)> {
+fn top_limit(mut ranked: Vec<(Candidate, i64)>, limit: usize) -> Vec<(Candidate, i64)> {
     ranked.truncate(limit);
-    ranked.into_iter().map(|(c, s, _)| (c, s)).collect()
+    ranked
 }
 
 impl QueryEngine {
@@ -105,22 +105,19 @@ impl QueryEngine {
             .unwrap_or(0);
 
         let mut top = BinaryHeap::new();
-        for (idx, candidate) in self.candidates.iter().enumerate() {
+        for candidate in &self.candidates {
             if !Self::kind_matches(candidate, kind_filter) {
                 continue;
             }
             let score = default_browse_score(&candidate.candidate, now_unix_s);
             push_top_k(
                 &mut top,
-                ScoredMatch::new(candidate.candidate.clone(), score, idx),
+                ScoredMatch::new(candidate.candidate.clone(), score),
                 limit,
             );
         }
 
         finalize_top_k(top)
-            .into_iter()
-            .map(|(c, s, _)| (c, s))
-            .collect()
     }
 
     fn search_regex_query(
@@ -141,7 +138,7 @@ impl QueryEngine {
         };
 
         let mut top = BinaryHeap::new();
-        for (idx, candidate) in self.candidates.iter().enumerate() {
+        for candidate in &self.candidates {
             if !Self::kind_matches(candidate, kind_filter) {
                 continue;
             }
@@ -170,15 +167,12 @@ impl QueryEngine {
                 + path_depth_penalty(&candidate.candidate);
             push_top_k(
                 &mut top,
-                ScoredMatch::new(candidate.candidate.clone(), final_score, idx),
+                ScoredMatch::new(candidate.candidate.clone(), final_score),
                 limit,
             );
         }
 
         finalize_top_k(top)
-            .into_iter()
-            .map(|(c, s, _)| (c, s))
-            .collect()
     }
 
     fn search_text_query(
@@ -196,7 +190,7 @@ impl QueryEngine {
         let pool_limit = (limit.saturating_mul(RERANK_POOL_MULTIPLIER)).max(RERANK_TOP_N);
         let alias_terms = self.alias_terms_for_query(normalized_query, kind_filter);
 
-        for (idx, candidate) in self.candidates.iter().enumerate() {
+        for candidate in &self.candidates {
             if !Self::kind_matches(candidate, kind_filter) {
                 continue;
             }
@@ -259,7 +253,7 @@ impl QueryEngine {
                 + path_depth_penalty(&candidate.candidate);
             push_top_k(
                 &mut top,
-                ScoredMatch::new(candidate.candidate.clone(), final_score, idx),
+                ScoredMatch::new(candidate.candidate.clone(), final_score),
                 pool_limit,
             );
         }
